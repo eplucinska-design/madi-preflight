@@ -4,7 +4,9 @@ from email.parser import BytesParser
 from email.policy import default
 from pathlib import Path
 import base64
+import hmac
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -20,6 +22,19 @@ PDF_LOCK = threading.Lock()
 
 
 class Handler(BaseHTTPRequestHandler):
+    def authorized(self):
+        password = os.environ.get('MADI_PASSWORD')
+        if not password:
+            return True
+        expected = 'Basic ' + base64.b64encode(('madi:' + password).encode()).decode()
+        if hmac.compare_digest(self.headers.get('Authorization', ''), expected):
+            return True
+        self.send_response(401)
+        self.send_header('WWW-Authenticate', 'Basic realm="MADI Preflight", charset="UTF-8"')
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+        return False
+
     def reply(self, status, data, kind='application/json'):
         if not isinstance(data, bytes):
             data = json.dumps(data, ensure_ascii=False).encode('utf-8')
@@ -32,10 +47,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
+        if not self.authorized():
+            return
         files = {'/': ('index.html', 'text/html; charset=utf-8'),
-                 '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
-                 '/style.css': ('style.css', 'text/css; charset=utf-8'),
-                 '/workflow.css': ('workflow.css', 'text/css; charset=utf-8')}
+                 '/tools.js': ('tools.js', 'text/javascript; charset=utf-8'),
+                 '/workspace.js': ('workspace.js', 'text/javascript; charset=utf-8'),
+                 '/workspace.css': ('workspace.css', 'text/css; charset=utf-8'),
+                 '/vendor/lucide.min.js': ('vendor/lucide.min.js', 'text/javascript; charset=utf-8'),
+                 '/vendor/lucide-LICENSE': ('vendor/lucide-LICENSE', 'text/plain; charset=utf-8')}
         path = urllib.parse.urlsplit(self.path).path
         if path not in files:
             return self.reply(404, {'error': 'Nie znaleziono.'})
@@ -43,9 +62,12 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(200, (ROOT / 'static' / name).read_bytes(), kind)
 
     def do_POST(self):
+        if not self.authorized():
+            return
         try:
             origin = self.headers.get('Origin')
-            if origin and origin != 'http://' + self.headers.get('Host', ''):
+            parsed_origin = urllib.parse.urlsplit(origin or '')
+            if origin and (parsed_origin.scheme not in {'http', 'https'} or parsed_origin.netloc != self.headers.get('Host', '')):
                 return self.reply(403, {'error': 'Niedozwolone zrodlo zapytania.'})
             if self.path not in {'/api/analyze', '/api/process', '/api/inspect'}:
                 return self.reply(404, {'error': 'Nie znaleziono.'})
@@ -77,7 +99,8 @@ class Handler(BaseHTTPRequestHandler):
                     if self.path == '/api/inspect':
                         return self.reply(200, inspect_page(pdf, doc, page_number))
                     page = doc[page_number - 1]
-                    scale = min(1.5, 1200 / max(page.rect.width, page.rect.height))
+                    max_pixels = 180 if fields.get('thumbnail') == 'true' else 1600
+                    scale = max_pixels / max(page.rect.width, page.rect.height)
                     image = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False).tobytes('png')
                     result = {'pages': len(doc), 'width': round(page.rect.width * 25.4 / 72, 2),
                         'height': round(page.rect.height * 25.4 / 72, 2), 'preview': base64.b64encode(image).decode('ascii')}
@@ -109,6 +132,9 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
-    server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    bind = os.environ.get('MADI_BIND', '127.0.0.1')
+    if bind not in {'127.0.0.1', 'localhost', '::1'} and not os.environ.get('MADI_PASSWORD'):
+        raise RuntimeError('MADI_PASSWORD is required for network access.')
+    server = ThreadingHTTPServer((bind, port), Handler)
     print(f'MADI Preflight: http://127.0.0.1:{port}', flush=True)
     server.serve_forever()

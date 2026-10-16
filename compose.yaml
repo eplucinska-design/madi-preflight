@@ -1,0 +1,18 @@
+services:
+  preflight:
+    build: .
+    restart: unless-stopped
+    environment:
+      MADI_PASSWORD: ${MADI_PASSWORD:?Set MADI_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:8765:8765"
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 64
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

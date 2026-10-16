@@ -1,6 +1,8 @@
 """Synthetic PDF integration checks; no customer files required."""
 import io
 import json
+import base64
+import os
 import subprocess
 import sys
 import time
@@ -92,6 +94,28 @@ class SmokeTest(unittest.TestCase):
             with self.subTest(steps=steps), self.assertRaises(urllib.error.HTTPError) as error:
                 self.post('/api/process', {'workflow': json.dumps(steps)})
             self.assertEqual(error.exception.code, 422)
+
+    def test_server_password_and_workspace_assets(self):
+        password = 'test-only-password'
+        process = subprocess.Popen([sys.executable, 'server.py', '18766'],
+            env=os.environ | {'MADI_PASSWORD': password}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            for _ in range(40):
+                try:
+                    urllib.request.urlopen('http://127.0.0.1:18766/')
+                except urllib.error.HTTPError as error:
+                    self.assertEqual(error.code, 401)
+                    break
+                except OSError:
+                    time.sleep(.1)
+            headers = {'Authorization': 'Basic ' + base64.b64encode(('madi:' + password).encode()).decode()}
+            for path in ['/', '/workspace.js', '/tools.js', '/workspace.css', '/vendor/lucide.min.js']:
+                with urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:18766' + path, headers=headers)) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertGreater(len(response.read()), 100)
+        finally:
+            process.terminate()
+            process.wait()
 
 
 if __name__ == '__main__':

@@ -16,8 +16,12 @@ Otworz http://127.0.0.1:8765. Inny port: `python server.py 8766`.
 
 ## Zakres pierwszej wersji
 
-- Interfejs inspirowany MADI Flow: ciemna nawigacja, jasny obszar pracy,
-  panel parametrow i przelaczanie jasnego/ciemnego motywu.
+- Warsztat DTP blizszy aplikacji EXE: zakladki do 12 dokumentow,
+  miniatury stron, centralny podglad, pasek narzedzi i dokowane panele.
+- Panele: Wlasciwosci / Kolejka / Inspektor / Presety. Parametry w rozwijanych
+  grupach, pola zalezne od wybranego modelu koloru i ksztaltu.
+- Powiekszanie 50-300%, dopasowanie strony, przesuwanie widoku, zaznaczanie
+  ramki geometrii po analizie i przeciaganie plikow PDF do obszaru dokumentu.
 - Wczytanie PDF do 40 MB, podglad oryginalu i wyniku, nawigacja po stronach.
 - Format/spady, separacja wskazanego koloru spot, WHITE z bieli CMYK,
   normalizacja czerni, wykrojnik prostokatny lub kolowy o zadanych wymiarach.
@@ -52,9 +56,11 @@ Documents/Grafika. `server.py` uruchamia go w osobnym procesie z limitem
 90 sekund na cala kolejke. Kazde zadanie ma osobny katalog tymczasowy. Nazwy przeslanych
 plikow nie sa uzywane jako sciezki serwera.
 
-Serwer nasluchuje wylacznie lokalnie. To wersja do pracy na komputerze,
-nie serwer publiczny. Publiczny hosting wymaga backendu Python, izolacji
-zadan, uwierzytelniania i limitow zasobow. Nie wystarczy hosting statyczny.
+Domyslnie serwer nasluchuje lokalnie. Przy dostepie sieciowym wymaga
+MADI_PASSWORD; login to madi. Dostep zdalny wymaga reverse proxy HTTPS.
+Dockerfile i compose.yaml przygotowuja kontener dla serwera pracowni.
+Instrukcja: DEPLOY.md. Wdrozenie na zewnetrznym serwerze nie zostalo wykonane.
+GitHub Pages nie uruchomi silnika Python. Kontener wymaga osobnego hostingu.
 
 ## Otwarcie kodu
 
@@ -62,6 +68,7 @@ Kod projektu udostepniony na licencji GNU AGPL-3.0 (plik LICENSE).
 Repozytorium nie zawiera dokumentow klientow ani danych roboczych.
 PyMuPDF: AGPL-3.0 lub licencja komercyjna; pikepdf: MPL-2.0;
 Pillow: licencja HPND. Zaleznosci zachowuja swoje licencje.
+Ikony Lucide sa dolaczone lokalnie na licencji ISC (static/vendor/lucide-LICENSE).
 
 Impozycja i czyszczenie znacznikow korzystaja z modulow aplikacji desktopowej.
 To impozycja siatkowa, nie skladanie ksiazek. Czyszczenie moze usunac grafike
