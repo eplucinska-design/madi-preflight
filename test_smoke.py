@@ -27,6 +27,7 @@ class SmokeTest(unittest.TestCase):
         page.Resources = pikepdf.Dictionary(ColorSpace=pikepdf.Dictionary(HS=pikepdf.Array([
             pikepdf.Name.Separation, pikepdf.Name.HS, pikepdf.Name.DeviceCMYK,
             pikepdf.Dictionary(FunctionType=2, Domain=[0, 1], C0=[0, 0, 0, 0], C1=[0, 1, 0, 0], N=1)])))
+        page.Resources.ExtGState = pikepdf.Dictionary(Production=pikepdf.Dictionary(OP=True, op=False, OPM=1))
         page.Contents = pdf.make_stream(b'q 0.1 0.1 0.1 1 k 10 10 30 30 re f Q q 0 0 0 0 k 50 10 30 30 re f Q q /HS cs 1 scn 90 10 30 30 re f Q q /HS CS 1 SCN 10 80 m 220 80 l S Q')
         buf = io.BytesIO()
         pdf.save(buf)
@@ -48,7 +49,7 @@ class SmokeTest(unittest.TestCase):
             headers={'Content-Type': 'multipart/form-data; boundary=' + boundary}))
 
     def test_operations_and_previews(self):
-        for mode in ['bleed', 'black', 'white', 'matrix', 'shape', 'remove', 'dieline', 'imposer']:
+        for mode in ['bleed', 'black', 'white', 'matrix', 'shape', 'remove', 'dieline', 'imposer', 'cleanup']:
             with self.subTest(mode=mode):
                 with self.post('/api/process', {'mode': mode, 'spot': 'HS', 'bleed': '3',
                         'cut_enabled': 'true', 'cut_mode': 'spot', 'cut_value': 'HS'}) as response:
@@ -64,6 +65,32 @@ class SmokeTest(unittest.TestCase):
         for fields, data in [({}, b'bad'), ({'page': '999'}, self.pdf)]:
             with self.assertRaises(urllib.error.HTTPError) as error:
                 self.post('/api/analyze', fields, data)
+            self.assertEqual(error.exception.code, 422)
+
+    def test_workflow_order_and_page_organization(self):
+        steps = [{'mode': 'bleed', 'page_size': 'custom', 'page_width_mm': 90,
+                  'page_height_mm': 50, 'bleed': 0, 'bleed_mode': 'none'},
+                 {'mode': 'pages', 'page_range': '1,1', 'rotation': 90}]
+        with self.post('/api/process', {'workflow': json.dumps(steps)}) as response:
+            with fitz.open(stream=response.read(), filetype='pdf') as doc:
+                self.assertEqual(len(doc), 2)
+                self.assertAlmostEqual(doc[0].rect.width * 25.4 / 72, 50, places=1)
+                self.assertAlmostEqual(doc[0].rect.height * 25.4 / 72, 90, places=1)
+
+    def test_inspector_reports_resource_not_object_overprint(self):
+        with self.post('/api/inspect', {}) as response:
+            report = json.load(response)
+        self.assertIn('HS', report['spots'])
+        self.assertGreater(report['vector_count'], 0)
+        self.assertTrue(report['overprint_resources'][0]['stroke'])
+        self.assertFalse(report['overprint_resources'][0]['fill'])
+        self.assertIn('nie potwierdzaja', report['limitations'])
+
+    def test_bad_workflow_and_extreme_range(self):
+        for steps in [[], [{'mode': 'bleed'}]*13, [{'mode': 'pages', 'page_range': '1-999999999'}],
+                      [{'mode': 'bleed', 'bleed': 'NaN'}], [{'mode': 'unknown'}]]:
+            with self.subTest(steps=steps), self.assertRaises(urllib.error.HTTPError) as error:
+                self.post('/api/process', {'workflow': json.dumps(steps)})
             self.assertEqual(error.exception.code, 422)
 
 

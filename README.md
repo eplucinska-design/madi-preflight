@@ -23,7 +23,16 @@ Otworz http://127.0.0.1:8765. Inny port: `python server.py 8766`.
   normalizacja czerni, wykrojnik prostokatny lub kolowy o zadanych wymiarach.
 - Linie technologiczne, usuwanie koloru spot i impozycja arkuszowa.
 - Parametry formatu, ksztaltu wykrojnika, kolorow WHITE i czerni.
-- Pobranie PDF po wykonaniu jednej operacji (kazda operacja korzysta z oryginalu).
+- Kolejka do 12 operacji z wykonywaniem po kolei, zmiana kolejnosci i usuwaniem.
+- Wybor wejscia: oryginal albo poprzedni wynik.
+- Lokalne presety parametrow i kolejek (localStorage przegladarki).
+- Organizacja stron: wybor, kolejnosc, powielanie, zakresy i obrot.
+- Czyszczenie znacznikow (heurystyczne), format po wykrojniku,
+  nieregularny obrys, perforacja i mapowanie kolorow linii.
+- Rozszerzone ustawienia WHITE, czerni, CMYK/RGB/spot, tolerancji i impozycji.
+- Inspektor biezacej strony: kolory spot z zasobow, osadzenie fontow,
+  efektywna rozdzielczosc obrazow, pola strony i deklaracje overprint.
+- Klikniecie geometrii w podgladzie po analizie pokazuje jej atrybuty podgladowe.
 
 Podglad pozwala przelaczac oryginal i wynik. Ta wersja nie wykonuje pelnego audytu
 zgodnosci PDF/X, osadzenia fontow, DPI ani poprawnosci produkcyjnej.
@@ -32,14 +41,15 @@ korzystaja z wartosci domyslnych odziedziczonego silnika.
 
 ## Sprawdzenie dzialania
 
-`python -m unittest test_smoke -v` sprawdza osiem operacji i podglad wynikow
-na syntetycznym PDF oraz odrzucanie blednego pliku i numeru strony.
+`python -m unittest test_smoke -v` sprawdza operacje i podglad wynikow,
+kolejnosc workflow, obrot i powielanie stron, inspektor oraz bledne wejscie.
+Testy nie korzystaja z dokumentow klientow.
 
 ## Architektura i wdrozenie
 
 `engine/foil_preflight.py` to niezmieniona kopia roboczego silnika z
 Documents/Grafika. `server.py` uruchamia go w osobnym procesie z limitem
-90 sekund. Kazde zadanie ma osobny katalog tymczasowy. Nazwy przeslanych
+90 sekund na cala kolejke. Kazde zadanie ma osobny katalog tymczasowy. Nazwy przeslanych
 plikow nie sa uzywane jako sciezki serwera.
 
 Serwer nasluchuje wylacznie lokalnie. To wersja do pracy na komputerze,
@@ -53,7 +63,19 @@ Repozytorium nie zawiera dokumentow klientow ani danych roboczych.
 PyMuPDF: AGPL-3.0 lub licencja komercyjna; pikepdf: MPL-2.0;
 Pillow: licencja HPND. Zaleznosci zachowuja swoje licencje.
 
-Impozycja korzysta z niezmienionego modulu `engine/imposer.py` z aplikacji
-desktopowej. To impozycja siatkowa, nie skladanie ksiazek. Pelny zestaw
-funkcji EXE (m.in. presety, lancuch operacji, pozostale warianty kolorow)
-nie zostal jeszcze przeniesiony.
+Impozycja i czyszczenie znacznikow korzystaja z modulow aplikacji desktopowej.
+To impozycja siatkowa, nie skladanie ksiazek. Czyszczenie moze usunac grafike
+przypominajaca znaczniki: nalezy sprawdzic podglad wyniku.
+
+## Granice inspekcji i dalsze DTP
+
+Inspektor analizuje biezaca strone, w tym zasoby formularzy XObject.
+Deklaracje ExtGState nie dowodza efektywnego nadruku konkretnego obiektu.
+Brak osadzenia fontu jest informacja, nie automatyczna ocena zgodnosci PDF/X.
+Kolory geometrii pochodza z RGB podgladu, nie z oryginalnych probek PDF.
+Klikniecie wybiera najmniejsza otaczajaca ramke geometrii (maks. 2000),
+nie wykonuje dokladnego hit-testu sciezki. Tekst i obrazy nie sa edytowane.
+
+Ta wersja nie jest pelnym edytorem Acrobat/Illustrator. Nadal wymagaja
+implementacji: edycja wezlow i tekstu, warstwy, przypisywanie probek do
+wybranych obiektow, ich efektywny overprint, zarzadzanie ICC i walidacja PDF/X.
