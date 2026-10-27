@@ -17,7 +17,7 @@ pages:['Wybierz, ułóż, powiel i obróć strony.','strony kolejność obrót d
 boxes:['Ustaw TrimBox, BleedBox, CropBox, ArtBox lub MediaBox marginesami od wybranego pola. Treść strony się nie zmienia; marginesy ujemne powiększają pole.','pola strony trimbox bleedbox cropbox mediabox format netto kadrowanie'],
 spot_rename:['Zmień nazwę spotu lub zamień go na istniejący spot.','spot nazwa zamiana pantone'],
 spot_extract:['Wydziel obiekty w kolorze spot na osobne strony.','spot separacja płyta wydziel'],
-spot_overprint:['Włącz lub wyłącz nadruk dla obiektów w kolorze spot.','nadruk overprint spot']};
+spot_overprint:['Włącz lub wyłącz nadruk dla obiektów w kolorze spot.','nadruk overprint spot'],spot_alternate:['Zmień zastępcze składowe CMYK koloru spot (wygląd na ekranie i proofie). Płyta spot się nie zmienia.','cmyk składowe alternatywa spot pantone'],spot_to_cmyk:['Zamień kolor spot na jego odpowiednik CMYK (jawna konwersja tylko tego koloru; obrazy i cieniowania bez zmian).','konwersja spot cmyk proces'],cmyk_to_spot:['Obiekty w podanym kolorze CMYK maluj kolorem dodatkowym 100% (np. HOT, lakier, biel z oznaczonego koloru).','cmyk spot hot lakier zamiana'],white_overprint_fix:['Wyłącz nadruk dla białych obiektów, które w druku by zniknęły.','biały nadruk overprint naprawa']};
 for(const button of library.querySelectorAll('button[data-tool]')){const info=toolInfo[button.dataset.tool];if(info)button.title=info[0];}
 // Tool search above the library.
 const toolSearch=document.createElement('input');toolSearch.type='search';toolSearch.className='tool-search';toolSearch.placeholder='Szukaj narzędzia…  (Ctrl K)';toolSearch.setAttribute('aria-label','Szukaj narzędzia');

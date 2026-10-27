@@ -12,6 +12,7 @@ from imposer import process_imposer_pdf, settings_from_args, render_sheets
 from cleanup_marks import process_cleanup_marks_pdf
 import colors
 import page_boxes
+import color_ops
 
 
 def truth(value):
@@ -86,6 +87,15 @@ def run(step, src, out):
             raise ValueError('Nieprawidlowe marginesy pola strony.')
         return page_boxes.set_box(src, out, str(step.get('boxes_target', 'trim')), str(step.get('boxes_reference', 'media')),
             *values, pages=str(step.get('boxes_pages', '')))
+    if mode == 'spot_alternate':
+        return color_ops.set_spot_alternate(src, out, str(step.get('spot_name', '')).strip(), str(step.get('spot_cmyk', '')))
+    if mode == 'spot_to_cmyk':
+        return color_ops.spot_to_cmyk(src, out, str(step.get('spot_name', '')).strip())
+    if mode == 'cmyk_to_spot':
+        return color_ops.cmyk_to_spot(src, out, str(step.get('source_cmyk', '')), str(step.get('spot_new_name', '')),
+            float(str(step.get('cmyk_tolerance', 0.5)).replace(',', '.')), str(step.get('cmyk_target', 'both')))
+    if mode == 'white_overprint_fix':
+        return color_ops.remove_white_overprint(src, out)
     if mode == 'spot_rename':
         return colors.rename_spot(src, out, str(step.get('spot_name', '')), str(step.get('spot_new_name', '')))
     if mode == 'spot_extract':

@@ -218,6 +218,32 @@ class SmokeTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError):
             self.post('/api/process', {'workflow': json.dumps([{**step, 'boxes_top_mm': 400}])}, payload)
 
+    def test_colour_conversions_on_explicit_command(self):
+        pdf = pikepdf.Pdf.new()
+        page = pdf.add_blank_page(page_size=(200, 100))
+        page.Resources = pikepdf.Dictionary(ColorSpace=pikepdf.Dictionary(HS=pikepdf.Array([
+            pikepdf.Name.Separation, pikepdf.Name('/HOT'), pikepdf.Name.DeviceCMYK,
+            pikepdf.Dictionary(FunctionType=2, Domain=[0, 1], C0=[0, 0, 0, 0], C1=[0, .3, 1, 0], N=1)])),
+            ExtGState=pikepdf.Dictionary(OP=pikepdf.Dictionary(op=True, OP=True)))
+        page.Contents = pdf.make_stream(b'q /HS cs 0.5 scn 10 10 30 30 re f Q q 0.1 0.9 0.2 0 k 50 10 30 30 re f Q '
+                                        b'q /OP gs 0 0 0 0 k 90 10 30 30 re f Q')
+        buf = io.BytesIO()
+        pdf.save(buf)
+        data = buf.getvalue()
+        def run(step):
+            with self.post('/api/process', {'workflow': json.dumps([step])}, data) as response:
+                return response.read()
+        converted = run({'mode': 'spot_to_cmyk', 'spot_name': 'HOT'})
+        self.assertNotIn('HOT', {k for k, v in self.spots(converted).items() if v['fill']})
+        with pikepdf.open(io.BytesIO(converted)) as result:
+            self.assertIn(b'0 0.15 0.5 0 k', result.pages[0].Contents.read_bytes())
+        spotted = self.spots(run({'mode': 'cmyk_to_spot', 'source_cmyk': '10,90,20,0', 'spot_new_name': 'LAKIER'}))
+        self.assertEqual(spotted['LAKIER']['fill'], 1)
+        with pikepdf.open(io.BytesIO(run({'mode': 'spot_alternate', 'spot_name': 'HOT', 'spot_cmyk': '10,20,30,0'}))) as result:
+            self.assertEqual([float(v) for v in result.pages[0].Resources.ColorSpace.HS[3].C1], [.1, .2, .3, 0])
+        with self.post('/api/preflight', {}, run({'mode': 'white_overprint_fix'})) as response:
+            self.assertNotIn('white_overprint', {item['code'] for item in json.load(response)['issues']})
+
     def test_cleanup_handles_zero_size_paths(self):
         pdf = pikepdf.Pdf.new()
         page = pdf.add_blank_page(page_size=(200, 200))

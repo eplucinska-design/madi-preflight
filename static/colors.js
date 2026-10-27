@@ -1,5 +1,5 @@
 // Spot colour list for the colour tools: usage read from PDF content streams by /api/spots.
-const spotTools=new Set(['spot_rename','spot_extract','spot_overprint']);
+const spotTools=new Set(['spot_rename','spot_extract','spot_overprint','spot_alternate','spot_to_cmyk']);
 const spotCache=new WeakMap();
 async function spotReport(file){if(!spotCache.has(file)){const form=new FormData();form.append('file',file);spotCache.set(file,request('/api/spots',form).then(response=>response.json()).catch(error=>{spotCache.delete(file);throw error;}));}return spotCache.get(file);}
 function spotInput(){const doc=active();return doc&&($('input-source').value==='result'?doc.result:doc.file);}
