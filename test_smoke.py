@@ -63,6 +63,20 @@ class SmokeTest(unittest.TestCase):
                 with self.post('/api/analyze', {}, result) as response:
                     self.assertTrue(json.load(response)['preview'])
 
+    def test_analyze_reports_page_boxes_in_displayed_orientation(self):
+        source = fitz.open()
+        page = source.new_page(width=200, height=100)
+        page.set_trimbox(fitz.Rect(10, 5, 180, 90))
+        page.set_rotation(90)
+        payload = source.tobytes()
+        source.close()
+        with self.post('/api/analyze', {}, payload) as response:
+            boxes = json.load(response)['boxes']
+        mm = 25.4 / 72
+        for actual, expected in zip(boxes['trimbox'], (10, 10, 95, 180)):
+            self.assertAlmostEqual(actual, expected * mm, places=2)
+        self.assertAlmostEqual(boxes['mediabox'][3], 200 * mm, places=2)
+
     def test_invalid_input(self):
         for fields, data in [({}, b'bad'), ({'page': '999'}, self.pdf)]:
             with self.assertRaises(urllib.error.HTTPError) as error:

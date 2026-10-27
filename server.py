@@ -21,6 +21,18 @@ MAX_UPLOAD = 40 * 1024 * 1024
 PDF_LOCK = threading.Lock()
 
 
+def page_boxes(page):
+    """Page boxes in mm, in displayed (rotated) orientation, relative to the visible CropBox."""
+    matrix = page.rotation_matrix
+    origin = page.cropbox * matrix
+    boxes = {}
+    for name in ('mediabox', 'cropbox', 'bleedbox', 'trimbox'):
+        rect = getattr(page, name) * matrix
+        boxes[name] = [round((value - offset) * 25.4 / 72, 3) for value, offset in
+                       zip(rect, (origin.x0, origin.y0, origin.x0, origin.y0))]
+    return boxes
+
+
 class Handler(BaseHTTPRequestHandler):
     def authorized(self):
         password = os.environ.get('MADI_PASSWORD')
@@ -58,6 +70,7 @@ class Handler(BaseHTTPRequestHandler):
                  '/ergonomics.css': ('ergonomics.css', 'text/css; charset=utf-8'),
                  '/usability.js': ('usability.js', 'text/javascript; charset=utf-8'),
                  '/layout.js': ('layout.js', 'text/javascript; charset=utf-8'),
+                 '/measure.js': ('measure.js', 'text/javascript; charset=utf-8'),
                  '/clickup.css': ('clickup.css', 'text/css; charset=utf-8'),
                  '/fonts/jost-latin-600-normal.woff2': ('fonts/jost-latin-600-normal.woff2', 'font/woff2'),
                  '/fonts/jost-latin-ext-600-normal.woff2': ('fonts/jost-latin-ext-600-normal.woff2', 'font/woff2'),
@@ -112,7 +125,8 @@ class Handler(BaseHTTPRequestHandler):
                     scale = max_pixels / max(page.rect.width, page.rect.height)
                     image = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False).tobytes('png')
                     result = {'pages': len(doc), 'width': round(page.rect.width * 25.4 / 72, 2),
-                        'height': round(page.rect.height * 25.4 / 72, 2), 'preview': base64.b64encode(image).decode('ascii')}
+                        'height': round(page.rect.height * 25.4 / 72, 2), 'preview': base64.b64encode(image).decode('ascii'),
+                        'boxes': page_boxes(page)}
                 return self.reply(200, result)
             steps = json.loads(fields['workflow']) if 'workflow' in fields else [fields]
             if not isinstance(steps, list) or not 1 <= len(steps) <= 12:
