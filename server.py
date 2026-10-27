@@ -58,6 +58,13 @@ def limit_child():
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 
+def engine_command(script, *args):
+    """Command for an engine script; in the desktop EXE the executable itself runs the script."""
+    if getattr(sys, 'frozen', False):
+        return [sys.executable, '--engine', script, *args]
+    return [sys.executable, str(ROOT / 'engine' / script), *args]
+
+
 def run_engine(command, data=None, timeout=90):
     """Run an engine script in a separate, resource-limited process; refuse when all job slots are busy."""
     if not JOBS.acquire(timeout=5):
@@ -210,7 +217,7 @@ class Handler(BaseHTTPRequestHandler):
                 with tempfile.TemporaryDirectory(prefix='madi-web-') as work:
                     src = Path(work) / 'input.pdf'
                     src.write_bytes(pdf)
-                    completed = run_engine([sys.executable, str(ROOT / 'engine' / 'spots.py'), str(src)], timeout=60)
+                    completed = run_engine(engine_command('spots.py', str(src)), timeout=60)
                 if completed.returncode:
                     raise ValueError('Nie udalo sie odczytac kolorow spot.')
                 return self.reply(200, json.loads(completed.stdout.decode('utf-8', 'replace').strip().splitlines()[-1]))
@@ -221,8 +228,8 @@ class Handler(BaseHTTPRequestHandler):
                 with tempfile.TemporaryDirectory(prefix='madi-web-') as work:
                     src = Path(work) / 'input.pdf'
                     src.write_bytes(pdf)
-                    completed = run_engine([sys.executable, str(ROOT / 'engine' / 'sample.py'), str(src),
-                        str(int(fields.get('page', '1'))), str(numbers[0]), str(numbers[1])], timeout=60)
+                    completed = run_engine(engine_command('sample.py', str(src),
+                        str(int(fields.get('page', '1'))), str(numbers[0]), str(numbers[1])), timeout=60)
                 if completed.returncode:
                     try:
                         error = json.loads(completed.stderr.decode('utf-8', 'replace').splitlines()[-1])['error']
@@ -255,7 +262,7 @@ class Handler(BaseHTTPRequestHandler):
             with tempfile.TemporaryDirectory(prefix='madi-web-') as work:
                 src, out = Path(work) / 'input.pdf', Path(work) / 'output.pdf'
                 src.write_bytes(pdf)
-                command = [sys.executable, str(ROOT / 'engine' / 'workflow.py'), str(src), str(out)]
+                command = engine_command('workflow.py', str(src), str(out))
                 completed = run_engine(command, json.dumps(steps).encode(), timeout=90)
                 if completed.returncode or not out.exists():
                     lines = completed.stderr.decode('utf-8', errors='replace').splitlines()
