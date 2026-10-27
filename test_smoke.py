@@ -138,6 +138,34 @@ class SmokeTest(unittest.TestCase):
         self.assertAlmostEqual(overprint['M'], 40, delta=1)
         self.assertAlmostEqual(overprint['HOT'], 100, delta=1)
 
+    def test_preflight_report_levels_and_locations(self):
+        pdf = pikepdf.Pdf.new()
+        page = pdf.add_blank_page(page_size=(300, 200))
+        page.TrimBox = [8.5, 8.5, 291.5, 191.5]
+        page.BleedBox = [5, 5, 295, 195]   # ~1.2 mm bleed
+        image = pikepdf.Stream(pdf, b'\xff\x00\x00' * 64)
+        image.Type, image.Subtype, image.Width, image.Height = pikepdf.Name.XObject, pikepdf.Name.Image, 8, 8
+        image.ColorSpace, image.BitsPerComponent = pikepdf.Name.DeviceRGB, 8
+        page.Resources = pikepdf.Dictionary(XObject=pikepdf.Dictionary(Im=image),
+            ExtGState=pikepdf.Dictionary(OP=pikepdf.Dictionary(op=True, OP=True)),
+            Font=pikepdf.Dictionary(F=pikepdf.Dictionary(Type=pikepdf.Name.Font, Subtype=pikepdf.Name.Type1,
+                BaseFont=pikepdf.Name('/ArialMT'))))
+        page.Contents = pdf.make_stream(b'q 100 0 0 100 20 20 cm /Im Do Q q /OP gs 0 0 0 0 k 150 20 50 50 re f Q '
+                                        b'q 1 0 0 rg 220 20 30 30 re f Q BT /F 12 Tf 20 150 Td (Tekst) Tj ET')
+        buf = io.BytesIO()
+        pdf.save(buf)
+        with self.post('/api/preflight', {'bleed': 3, 'dpi_error': 150, 'dpi_warning': 250}, buf.getvalue()) as response:
+            result = json.load(response)
+        codes = {(item['level'], item['code']) for item in result['issues']}
+        for expected in [('warning', 'bleed'), ('error', 'image_dpi'), ('warning', 'image_rgb'),
+                         ('error', 'white_overprint'), ('warning', 'vector_rgb'), ('error', 'font_not_embedded')]:
+            self.assertIn(expected, codes)
+        image_issue = next(item for item in result['issues'] if item['code'] == 'image_dpi')
+        self.assertEqual(image_issue['page'], 1)
+        self.assertAlmostEqual(image_issue['bbox_mm'][0], 20 * 25.4 / 72, places=1)
+        self.assertGreater(result['counts']['error'], 0)
+        self.assertIn('nie zastepuje', result['limitations'])
+
     def test_invalid_input(self):
         for fields, data in [({}, b'bad'), ({'page': '999'}, self.pdf)]:
             with self.assertRaises(urllib.error.HTTPError) as error:
