@@ -213,7 +213,7 @@ class Handler(BaseHTTPRequestHandler):
                     completed = run_engine([sys.executable, str(ROOT / 'engine' / 'spots.py'), str(src)], timeout=60)
                 if completed.returncode:
                     raise ValueError('Nie udalo sie odczytac kolorow spot.')
-                return self.reply(200, json.loads(completed.stdout))
+                return self.reply(200, json.loads(completed.stdout.decode('utf-8', 'replace').strip().splitlines()[-1]))
             if self.path == '/api/sample':
                 numbers = [float(fields.get(key, 'nan')) for key in ('x', 'y')]
                 if not all(0 <= value <= 20000 for value in numbers):
@@ -229,7 +229,7 @@ class Handler(BaseHTTPRequestHandler):
                     except (ValueError, KeyError, IndexError):
                         error = 'Nie udalo sie odczytac separacji.'
                     raise ValueError(error)
-                return self.reply(200, json.loads(completed.stdout))
+                return self.reply(200, json.loads(completed.stdout.decode('utf-8', 'replace').strip().splitlines()[-1]))
             if self.path in {'/api/analyze', '/api/inspect'}:
                 with PDF_LOCK, fitz.open(stream=pdf, filetype='pdf') as doc:
                     if doc.needs_pass:
