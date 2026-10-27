@@ -444,7 +444,7 @@ class SmokeTest(unittest.TestCase):
         sheets = self.sheet_words({**base, 'imposer_columns': 4, 'imposer_repeat_count': 2}, self.numbered_pdf(2))
         self.assertEqual([w for _, w in sheets[0]], ['PAGE-1', 'PAGE-1', 'PAGE-2', 'PAGE-2'])
         with self.assertRaises(urllib.error.HTTPError) as error:
-            self.post('/api/process', {'workflow': json.dumps([{**base, 'imposer_order': 'booklet'}])})
+            self.post('/api/process', {'workflow': json.dumps([{**base, 'imposer_order': 'calendar'}])})
         self.assertEqual(error.exception.code, 422)
 
     def test_imposition_preview_matches_export_for_all_options(self):
