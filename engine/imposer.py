@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -93,6 +93,7 @@ class ImposerSettings:
     mark_length_mm: float = 4.0
     mark_offset_mm: float = 2.0
     duplex_pairing: str = "sequential"
+    bleed_mm: float = 3.0
 
 
 def _choice(args: SimpleNamespace, name: str, default: str, allowed: set[str]) -> str:
@@ -123,7 +124,7 @@ def settings_from_args(args: SimpleNamespace) -> ImposerSettings:
     fit_mode = str(getattr(args, "imposer_fit_mode", "Fit")).strip().lower()
     if fit_mode in {"non-prop fill", "nonprop fill", "nonprop_fill", "stretch"}:
         fit_mode = "fill"
-    if fit_mode not in {"fit", "fill", "actual"}:
+    if fit_mode not in {"fit", "fill", "actual", "trim"}:
         raise ValueError("Nieprawidlowe dopasowanie uzytku.")
 
     return ImposerSettings(
@@ -156,6 +157,7 @@ def settings_from_args(args: SimpleNamespace) -> ImposerSettings:
         mark_length_mm=max(_float_arg(args, "imposer_mark_length_mm", 4.0), 0.0),
         mark_offset_mm=max(_float_arg(args, "imposer_mark_offset_mm", 2.0), 0.0),
         duplex_pairing=_choice(args, "imposer_duplex_pairing", "sequential", {"sequential", "alternate"}),
+        bleed_mm=max(_float_arg(args, "imposer_bleed_mm", 3.0), 0.0),
     )
 
 
@@ -177,9 +179,19 @@ def _slot_rect(settings: ImposerSettings, row: int, col: int, mirror: bool) -> f
     cell_h = mm_to_pt(settings.position_height_mm) if settings.position_height_mm else auto_h
     if cell_w <= 0 or cell_h <= 0:
         raise ValueError("Wymiary użytku w Imposerze muszą być większe niż 0.")
+    if cell_w > auto_w + 0.01 or cell_h > auto_h + 0.01:
+        raise ValueError(
+            f"Uklad {settings.columns} x {settings.rows} pozycji {cell_w / PT_PER_MM:.1f} x {cell_h / PT_PER_MM:.1f} mm "
+            f"z odstepami nie miesci sie na arkuszu w marginesach."
+        )
+    # Fixed-size positions form one block centred in the area between the margins (as in Montax).
+    block_w = cell_w * settings.columns + gap_x * (settings.columns - 1)
+    block_h = cell_h * settings.rows + gap_y * (settings.rows - 1)
+    origin_x = left + (sheet_w - left - right - block_w) / 2
+    origin_y = top + (mm_to_pt(settings.sheet_height_mm) - top - bottom - block_h) / 2
     actual_col = settings.columns - 1 - col if mirror else col
-    x0 = left + actual_col * (auto_w + gap_x)
-    y0 = top + row * (auto_h + gap_y)
+    x0 = origin_x + actual_col * (cell_w + gap_x)
+    y0 = origin_y + row * (cell_h + gap_y)
     return fitz.Rect(x0, y0, x0 + cell_w, y0 + cell_h)
 
 
@@ -289,7 +301,29 @@ def placement(settings: ImposerSettings, page: fitz.Page, cell: fitz.Rect) -> tu
     return target, rotate, trim_rect
 
 
-def _draw_crop_marks(page: fitz.Page, rect: fitz.Rect, settings: ImposerSettings, bleed: float) -> None:
+def placement_trim(settings: ImposerSettings, page: fitz.Page, cell: fitz.Rect, inner: tuple[bool, bool, bool, bool]):
+    """Montax-style placement: the page TrimBox at 100 % centred in the position, bleed clipped to the
+    imposition bleed and, on sides facing another position, to half the gap. Returns target, rotation,
+    trim rectangle on the sheet and the source clip."""
+    rotate = int(settings.rotation) if settings.rotation != "auto" else 0
+    bleed = mm_to_pt(settings.bleed_mm)
+    half_x, half_y = mm_to_pt(settings.gap_x_mm) / 2, mm_to_pt(settings.gap_y_mm) / 2
+    want = (min(bleed, half_x) if inner[0] else bleed, min(bleed, half_y) if inner[1] else bleed,
+            min(bleed, half_x) if inner[2] else bleed, min(bleed, half_y) if inner[3] else bleed)
+    crop, trim = page.cropbox, page.trimbox
+    tr = fitz.Rect(trim.x0 - crop.x0, trim.y0 - crop.y0, trim.x1 - crop.x0, trim.y1 - crop.y0)
+    src_want = _rotate_insets(want, (360 - rotate) % 360)
+    clip = fitz.Rect(tr.x0 - src_want[0], tr.y0 - src_want[1], tr.x1 + src_want[2], tr.y1 + src_want[3]) & page.rect
+    got = _rotate_insets((tr.x0 - clip.x0, tr.y0 - clip.y0, clip.x1 - tr.x1, clip.y1 - tr.y1), rotate)
+    tw, th = (tr.height, tr.width) if rotate in (90, 270) else (tr.width, tr.height)
+    x0, y0 = cell.x0 + (cell.width - tw) / 2, cell.y0 + (cell.height - th) / 2
+    trim_rect = fitz.Rect(x0, y0, x0 + tw, y0 + th)
+    target = fitz.Rect(trim_rect.x0 - got[0], trim_rect.y0 - got[1], trim_rect.x1 + got[2], trim_rect.y1 + got[3])
+    return target, rotate, trim_rect, clip
+
+
+def _draw_crop_marks(page: fitz.Page, rect: fitz.Rect, settings: ImposerSettings, bleed: float,
+                     outer: tuple[bool, bool, bool, bool] = (True, True, True, True)) -> None:
     length = mm_to_pt(settings.mark_length_mm)
     # Marks never reach into the bleed of the placed page.
     offset = max(mm_to_pt(settings.mark_offset_mm), bleed)
@@ -305,8 +339,11 @@ def _draw_crop_marks(page: fitz.Page, rect: fitz.Rect, settings: ImposerSettings
         ((rect.x1 + offset, rect.y1), (rect.x1 + offset + length, rect.y1)),
         ((rect.x1, rect.y1 + offset), (rect.x1, rect.y1 + offset + length)),
     )
-    for start, end in coords:
-        page.draw_line(fitz.Point(*start), fitz.Point(*end), color=REGISTRATION, width=0.25)
+    # Segment order above: left, top, right, top, left, bottom, right, bottom (sides the segment points to).
+    sides = (0, 1, 2, 1, 0, 3, 2, 3)
+    for (start, end), side in zip(coords, sides):
+        if outer[side]:
+            page.draw_line(fitz.Point(*start), fitz.Point(*end), color=REGISTRATION, width=0.25)
 
 
 def _draw_blank(sheet: fitz.Page, rect: fitz.Rect) -> None:
@@ -341,13 +378,21 @@ def _render_side(
             if settings.add_blanks and preview:
                 _draw_blank(sheet, cell)
             continue
-        target, rotate, trim = placement(settings, src[source_page_index], cell)
-        sheet.show_pdf_page(target, src, source_page_index, keep_proportion=False, rotate=rotate)
+        actual_col = settings.columns - 1 - col if mirror else col
+        inner = (actual_col > 0, row > 0, actual_col < settings.columns - 1, row < settings.rows - 1)
+        if settings.fit_mode == "trim":
+            target, rotate, trim, clip = placement_trim(settings, src[source_page_index], cell, inner)
+            sheet.show_pdf_page(target, src, source_page_index, keep_proportion=False, rotate=rotate, clip=clip)
+        else:
+            target, rotate, trim = placement(settings, src[source_page_index], cell)
+            sheet.show_pdf_page(target, src, source_page_index, keep_proportion=False, rotate=rotate)
         if settings.draw_frames:
             sheet.draw_rect(cell, color=(0.0, 0.45, 1.0), width=0.35)
         if settings.crop_marks:
             bleed = max(trim.x0 - target.x0, trim.y0 - target.y0, target.x1 - trim.x1, target.y1 - trim.y1, 0)
-            _draw_crop_marks(sheet, trim, settings, bleed)
+            # Montax-style layouts mark only the outside of the block, so marks never land on a neighbour.
+            outer = tuple(not side for side in inner) if settings.fit_mode == "trim" else (True, True, True, True)
+            _draw_crop_marks(sheet, trim, settings, bleed, outer)
         if settings.draw_numbers:
             label = str(source_page_index + 1)
             marker = fitz.Rect(cell.x0 + cell.width / 2 - 11, cell.y0 + cell.height / 2 - 11, cell.x0 + cell.width / 2 + 11, cell.y0 + cell.height / 2 + 11)
@@ -361,6 +406,13 @@ def render_sheets(src: fitz.Document, settings: ImposerSettings, out: fitz.Docum
         raise ValueError("Imposer wymaga co najmniej jednej pozycji na arkuszu.")
     if src.page_count <= 0:
         raise ValueError("PDF wejsciowy nie zawiera stron.")
+    if settings.fit_mode == "trim" and not settings.position_width_mm:
+        # Automatic position size = TrimBox of the first page (as Montax "Auto positions size").
+        trim = src[0].trimbox
+        width, height = trim.width / PT_PER_MM, trim.height / PT_PER_MM
+        if settings.rotation in ("90", "270"):
+            width, height = height, width
+        settings = replace(settings, position_width_mm=width, position_height_mm=height)
     plan = sheet_plan(settings, src.page_count)
     if only_sheet is not None and not 0 <= only_sheet < len(plan):
         raise ValueError("Numer arkusza poza zakresem.")

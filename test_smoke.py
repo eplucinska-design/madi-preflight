@@ -166,6 +166,36 @@ class SmokeTest(unittest.TestCase):
         self.assertGreater(result['counts']['error'], 0)
         self.assertIn('nie zastepuje', result['limitations'])
 
+    def test_trim_imposition_matches_montax_reference_layout(self):
+        # Reference: Montax N-UP two-sided mirrored, 2 pages 210x198 trim + 3 mm bleed, sheet 488x330,
+        # 1x2 positions, gap 6 mm, margins 8 mm: page 1 front-left, page 2 on the back behind it.
+        mm = 72 / 25.4
+        source = fitz.open()
+        for number in (1, 2):
+            page = source.new_page(width=216 * mm, height=204 * mm)
+            page.set_trimbox(fitz.Rect(3 * mm, 3 * mm, 213 * mm, 201 * mm))
+            page.draw_rect(page.rect, color=None, fill=(1, 0, 0))
+            page.insert_text((40 * mm, 100 * mm), f'PAGE-{number}', fontsize=40)
+        payload = source.tobytes()
+        source.close()
+        step = {'mode': 'imposer', 'imposer_sheet': 'custom', 'imposer_sheet_width_mm': 488, 'imposer_sheet_height_mm': 330,
+            'imposer_rows': 1, 'imposer_columns': 2, 'imposer_gap_x_mm': 6, 'imposer_gap_y_mm': 6, 'imposer_repeat_count': 1,
+            'imposer_margin_top_mm': 8, 'imposer_margin_bottom_mm': 8, 'imposer_margin_left_mm': 8, 'imposer_margin_right_mm': 8,
+            'imposer_duplex': True, 'imposer_duplex_pairing': 'alternate', 'imposer_mirror_back': True,
+            'imposer_fit_mode': 'trim', 'imposer_bleed_mm': 3, 'imposer_crop_marks': True, 'imposer_draw_sheet_labels': False}
+        with self.post('/api/process', {'workflow': json.dumps([step])}, payload) as response:
+            with fitz.open(stream=response.read(), filetype='pdf') as doc:
+                self.assertEqual(len(doc), 2)
+                front = {w[4]: w[0] / mm for w in doc[0].get_text('words')}
+                back = {w[4]: w[0] / mm for w in doc[1].get_text('words')}
+                self.assertAlmostEqual(front['PAGE-1'], 31 + 37, delta=0.5)   # trim starts at 31 mm, 100 % scale
+                self.assertAlmostEqual(back['PAGE-2'], 247 + 37, delta=0.5)   # behind page 1 on the mirrored back
+                self.assertNotIn('PAGE-2', front)
+                ink = doc[0].get_pixmap(matrix=fitz.Matrix(1 / mm, 1 / mm), alpha=False)
+                row = [x for x in range(ink.width) if ink.pixel(x, 165) != (255, 255, 255)]
+                self.assertAlmostEqual(row[0], 28, delta=1)    # 3 mm bleed outside the trim
+                self.assertAlmostEqual(row[-1], 244, delta=1)  # inner bleed limited to half the 6 mm gap
+
     def test_cleanup_handles_zero_size_paths(self):
         pdf = pikepdf.Pdf.new()
         page = pdf.add_blank_page(page_size=(200, 200))
