@@ -70,6 +70,7 @@ class Handler(BaseHTTPRequestHandler):
                  '/ergonomics.css': ('ergonomics.css', 'text/css; charset=utf-8'),
                  '/usability.js': ('usability.js', 'text/javascript; charset=utf-8'),
                  '/layout.js': ('layout.js', 'text/javascript; charset=utf-8'),
+                 '/colors.js': ('colors.js', 'text/javascript; charset=utf-8'),
                  '/measure.js': ('measure.js', 'text/javascript; charset=utf-8'),
                  '/clickup.css': ('clickup.css', 'text/css; charset=utf-8'),
                  '/fonts/jost-latin-600-normal.woff2': ('fonts/jost-latin-600-normal.woff2', 'font/woff2'),
