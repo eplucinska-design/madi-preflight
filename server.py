@@ -70,6 +70,8 @@ class Handler(BaseHTTPRequestHandler):
                  '/ergonomics.css': ('ergonomics.css', 'text/css; charset=utf-8'),
                  '/usability.js': ('usability.js', 'text/javascript; charset=utf-8'),
                  '/layout.js': ('layout.js', 'text/javascript; charset=utf-8'),
+                 '/shell.js': ('shell.js', 'text/javascript; charset=utf-8'),
+                 '/shell.css': ('shell.css', 'text/css; charset=utf-8'),
                  '/ux.js': ('ux.js', 'text/javascript; charset=utf-8'),
                  '/colors.js': ('colors.js', 'text/javascript; charset=utf-8'),
                  '/measure.js': ('measure.js', 'text/javascript; charset=utf-8'),
