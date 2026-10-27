@@ -12,6 +12,15 @@ jobs:
         with:
           node-version: '22'
       - run: pip install -r requirements.txt
-      - run: node --check static/tools.js
-      - run: node --check static/workspace.js
+      - run: for f in static/*.js; do node --check "$f"; done
       - run: python -m unittest test_smoke -v
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t madi-preflight .
+      - name: Start in public mode and check health
+        run: |
+          docker run -d --name madi -p 8765:8765 -e MADI_PUBLIC=1 --read-only --tmpfs /tmp --memory 1g madi-preflight
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8765/healthz && exit 0; sleep 1; done
+          docker logs madi; exit 1

@@ -1,0 +1,22 @@
+# Render Blueprint: Dashboard > New > Blueprint > choose the GitHub repository.
+# Open access without a password, with job, rate and memory limits sized for a small instance.
+services:
+  - type: web
+    name: madi-preflight
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: MADI_PUBLIC
+        value: "1"
+      - key: MADI_TRUST_PROXY
+        value: "1"
+      - key: MADI_MAX_JOBS
+        value: "1"
+      - key: MADI_CHILD_MEMORY_MB
+        value: "400"   # starter has 512 MB; use 1500 on a 2 GB plan
+      - key: MADI_RATE_PER_MINUTE
+        value: "60"
+      - key: MADI_MAX_PAGES
+        value: "500"

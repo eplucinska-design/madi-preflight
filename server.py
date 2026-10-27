@@ -1,16 +1,19 @@
-"""Loopback-only web interface for MADI Preflight."""
+"""Web interface for MADI Preflight: loopback by default, public only with MADI_PUBLIC=1 and resource limits."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from email.parser import BytesParser
 from email.policy import default
 from pathlib import Path
 import base64
+import collections
 import hmac
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.parse
 
 import fitz
@@ -19,6 +22,66 @@ from inspector import inspect_page
 ROOT = Path(__file__).resolve().parent
 MAX_UPLOAD = 40 * 1024 * 1024
 PDF_LOCK = threading.Lock()
+
+
+def env_int(name, default):
+    try:
+        return max(int(os.environ.get(name, default)), 1)
+    except ValueError:
+        return default
+
+
+# Engine jobs run one child process each; this bounds parallel CPU/memory use on small hosts.
+JOBS = threading.BoundedSemaphore(env_int('MADI_MAX_JOBS', 2))
+RATE_PER_MINUTE = env_int('MADI_RATE_PER_MINUTE', 60)
+CHILD_MEMORY_MB = env_int('MADI_CHILD_MEMORY_MB', 1536)
+MAX_PAGES = env_int('MADI_MAX_PAGES', 500)
+TRUST_PROXY = os.environ.get('MADI_TRUST_PROXY') == '1'
+RATE_LOCK = threading.Lock()
+RATE_HITS: dict[str, collections.deque] = {}
+SECURITY_HEADERS = {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
+                               "script-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+}
+
+
+def limit_child():
+    """Applied in engine child processes on Linux: memory, CPU time, files and no core dumps."""
+    import resource
+    memory = CHILD_MEMORY_MB * 1024 * 1024
+    resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
+    resource.setrlimit(resource.RLIMIT_CPU, (120, 120))
+    resource.setrlimit(resource.RLIMIT_NOFILE, (256, 256))
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+
+def run_engine(command, data=None, timeout=90):
+    """Run an engine script in a separate, resource-limited process; refuse when all job slots are busy."""
+    if not JOBS.acquire(timeout=5):
+        raise BusyError()
+    try:
+        return subprocess.run(command, input=data, capture_output=True, timeout=timeout,
+                              preexec_fn=limit_child if os.name == 'posix' else None)
+    finally:
+        JOBS.release()
+
+
+class BusyError(Exception):
+    pass
+
+
+def cleanup_stale_workdirs(max_age=3600):
+    """Remove work directories left behind by a crash or kill; normal jobs delete their own."""
+    base = Path(tempfile.gettempdir())
+    for path in base.glob('madi-web-*'):
+        try:
+            if time.time() - path.stat().st_mtime > max_age:
+                shutil.rmtree(path, ignore_errors=True)
+        except OSError:
+            pass
 
 
 def page_boxes(page):
@@ -54,9 +117,30 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', kind)
         self.send_header('Content-Length', str(len(data)))
         self.send_header('Cache-Control', 'no-store')
-        self.send_header('X-Content-Type-Options', 'nosniff')
+        for key, value in SECURITY_HEADERS.items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(data)
+
+    def client_ip(self):
+        if TRUST_PROXY:
+            forwarded = self.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+            if forwarded:
+                return forwarded
+        return self.client_address[0]
+
+    def rate_limited(self):
+        now, ip = time.monotonic(), self.client_ip()
+        with RATE_LOCK:
+            hits = RATE_HITS.setdefault(ip, collections.deque())
+            while hits and now - hits[0] > 60:
+                hits.popleft()
+            if len(hits) >= RATE_PER_MINUTE:
+                return True
+            hits.append(now)
+            if len(RATE_HITS) > 10000:
+                RATE_HITS.clear()
+        return False
 
     def do_GET(self):
         if not self.authorized():
@@ -84,6 +168,8 @@ class Handler(BaseHTTPRequestHandler):
                  '/vendor/lucide.min.js': ('vendor/lucide.min.js', 'text/javascript; charset=utf-8'),
                  '/vendor/lucide-LICENSE': ('vendor/lucide-LICENSE', 'text/plain; charset=utf-8')}
         path = urllib.parse.urlsplit(self.path).path
+        if path == '/healthz':
+            return self.reply(200, {'status': 'ok'})
         if path not in files:
             return self.reply(404, {'error': 'Nie znaleziono.'})
         name, kind = files[path]
@@ -97,6 +183,8 @@ class Handler(BaseHTTPRequestHandler):
             parsed_origin = urllib.parse.urlsplit(origin or '')
             if origin and (parsed_origin.scheme not in {'http', 'https'} or parsed_origin.netloc != self.headers.get('Host', '')):
                 return self.reply(403, {'error': 'Niedozwolone zrodlo zapytania.'})
+            if self.rate_limited():
+                return self.reply(429, {'error': 'Zbyt wiele zapytan. Sprobuj za minute.'})
             if self.path not in {'/api/analyze', '/api/process', '/api/inspect', '/api/spots', '/api/sample'}:
                 return self.reply(404, {'error': 'Nie znaleziono.'})
             size = int(self.headers.get('Content-Length', 0))
@@ -122,8 +210,7 @@ class Handler(BaseHTTPRequestHandler):
                 with tempfile.TemporaryDirectory(prefix='madi-web-') as work:
                     src = Path(work) / 'input.pdf'
                     src.write_bytes(pdf)
-                    completed = subprocess.run([sys.executable, str(ROOT / 'engine' / 'spots.py'), str(src)],
-                        capture_output=True, timeout=60)
+                    completed = run_engine([sys.executable, str(ROOT / 'engine' / 'spots.py'), str(src)], timeout=60)
                 if completed.returncode:
                     raise ValueError('Nie udalo sie odczytac kolorow spot.')
                 return self.reply(200, json.loads(completed.stdout))
@@ -134,8 +221,8 @@ class Handler(BaseHTTPRequestHandler):
                 with tempfile.TemporaryDirectory(prefix='madi-web-') as work:
                     src = Path(work) / 'input.pdf'
                     src.write_bytes(pdf)
-                    completed = subprocess.run([sys.executable, str(ROOT / 'engine' / 'sample.py'), str(src),
-                        str(int(fields.get('page', '1'))), str(numbers[0]), str(numbers[1])], capture_output=True, timeout=60)
+                    completed = run_engine([sys.executable, str(ROOT / 'engine' / 'sample.py'), str(src),
+                        str(int(fields.get('page', '1'))), str(numbers[0]), str(numbers[1])], timeout=60)
                 if completed.returncode:
                     try:
                         error = json.loads(completed.stderr.decode('utf-8', 'replace').splitlines()[-1])['error']
@@ -147,6 +234,8 @@ class Handler(BaseHTTPRequestHandler):
                 with PDF_LOCK, fitz.open(stream=pdf, filetype='pdf') as doc:
                     if doc.needs_pass:
                         raise ValueError('PDF jest chroniony haslem.')
+                    if len(doc) > MAX_PAGES:
+                        raise ValueError(f'Limit wynosi {MAX_PAGES} stron.')
                     page_number = int(fields.get('page', '1'))
                     if not 1 <= page_number <= len(doc):
                         raise ValueError('Nieprawidlowy numer strony.')
@@ -167,7 +256,7 @@ class Handler(BaseHTTPRequestHandler):
                 src, out = Path(work) / 'input.pdf', Path(work) / 'output.pdf'
                 src.write_bytes(pdf)
                 command = [sys.executable, str(ROOT / 'engine' / 'workflow.py'), str(src), str(out)]
-                completed = subprocess.run(command, input=json.dumps(steps).encode(), capture_output=True, timeout=90)
+                completed = run_engine(command, json.dumps(steps).encode(), timeout=90)
                 if completed.returncode or not out.exists():
                     lines = completed.stderr.decode('utf-8', errors='replace').splitlines()
                     try:
@@ -177,6 +266,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError(error)
                 result = out.read_bytes()
             self.reply(200, result, 'application/pdf')
+        except BusyError:
+            self.reply(503, {'error': 'Serwer jest zajety innymi zadaniami. Sprobuj za chwile.'})
         except subprocess.TimeoutExpired:
             self.reply(422, {'error': 'Przekroczono czas kolejki (90 s).'})
         except (ValueError, RuntimeError, OverflowError) as error:
@@ -185,11 +276,20 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(500, {'error': 'Nie udalo sie odczytac lub przetworzyc PDF.'})
 
 
+class Server(ThreadingHTTPServer):
+    daemon_threads = True
+    request_queue_size = 32
+
+
 if __name__ == '__main__':
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get('PORT', 8765))
     bind = os.environ.get('MADI_BIND', '127.0.0.1')
-    if bind not in {'127.0.0.1', 'localhost', '::1'} and not os.environ.get('MADI_PASSWORD'):
-        raise RuntimeError('MADI_PASSWORD is required for network access.')
-    server = ThreadingHTTPServer((bind, port), Handler)
+    public = os.environ.get('MADI_PUBLIC') == '1'
+    # Network access needs either a password or an explicit public mode with the limits above.
+    if bind not in {'127.0.0.1', 'localhost', '::1'} and not os.environ.get('MADI_PASSWORD') and not public:
+        raise RuntimeError('Set MADI_PASSWORD, or MADI_PUBLIC=1 for open access with resource limits.')
+    cleanup_stale_workdirs()
+    Handler.timeout = 60  # drop clients that stall while sending a request
+    server = Server((bind, port), Handler)
     print(f'MADI Preflight: http://127.0.0.1:{port}', flush=True)
     server.serve_forever()

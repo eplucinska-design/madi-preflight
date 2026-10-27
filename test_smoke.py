@@ -17,7 +17,8 @@ import pikepdf
 class SmokeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = subprocess.Popen([sys.executable, 'server.py', '18765'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        cls.server = subprocess.Popen([sys.executable, 'server.py', '18765'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env=os.environ | {'MADI_RATE_PER_MINUTE': '10000'})
         for _ in range(40):
             try:
                 urllib.request.urlopen('http://127.0.0.1:18765/').close()
@@ -295,6 +296,41 @@ class SmokeTest(unittest.TestCase):
         self.assertGreater(lines({'imposer_crop_marks': True}), plain)
         self.assertGreater(lines({'imposer_draw_frames': True}), plain)
         self.assertGreater(lines({'imposer_crop_marks': True}), lines({'imposer_draw_frames': True}))
+
+    def test_health_and_security_headers(self):
+        with urllib.request.urlopen('http://127.0.0.1:18765/healthz') as response:
+            self.assertEqual(json.load(response)['status'], 'ok')
+            self.assertEqual(response.headers['X-Frame-Options'], 'DENY')
+            self.assertIn("frame-ancestors 'none'", response.headers['Content-Security-Policy'])
+
+    def test_rate_limit_and_network_mode_guard(self):
+        process = subprocess.Popen([sys.executable, 'server.py', '18767'], env=os.environ | {'MADI_RATE_PER_MINUTE': '3'},
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            for _ in range(40):
+                try:
+                    urllib.request.urlopen('http://127.0.0.1:18767/healthz').close()
+                    break
+                except OSError:
+                    time.sleep(.1)
+            codes = []
+            for _ in range(5):
+                request = urllib.request.Request('http://127.0.0.1:18767/api/analyze', data=b'x',
+                    headers={'Content-Type': 'text/plain'})
+                try:
+                    urllib.request.urlopen(request)
+                except urllib.error.HTTPError as error:
+                    codes.append(error.code)
+            self.assertEqual(codes[:3], [422, 422, 422])
+            self.assertEqual(codes[3:], [429, 429])
+        finally:
+            process.terminate()
+            process.wait()
+        env = {k: v for k, v in os.environ.items() if k not in ('MADI_PASSWORD', 'MADI_PUBLIC')}
+        guarded = subprocess.run([sys.executable, 'server.py', '18768'], env=env | {'MADI_BIND': '0.0.0.0'},
+            capture_output=True, timeout=30)
+        self.assertNotEqual(guarded.returncode, 0)
+        self.assertIn(b'MADI_PUBLIC', guarded.stderr)
 
     def test_server_password_and_workspace_assets(self):
         password = 'test-only-password'
