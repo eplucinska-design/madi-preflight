@@ -113,8 +113,88 @@ class SmokeTest(unittest.TestCase):
             self.assertEqual(len(plan), 2)
             for index in range(2):
                 self.assertEqual(out[index].get_pixmap().samples, plan[index].get_pixmap().samples)
-            words = {word[4]: word for word in out[1].get_text('words')}
-            self.assertGreater(words['PAGE-3'][0], words['PAGE-4'][0])
+            # Duplex pairs pages as front/back of one unit: front 1,3 and mirrored back 2,4.
+            front = {word[4]: word for word in out[0].get_text('words')}
+            back = {word[4]: word for word in out[1].get_text('words')}
+            self.assertLess(front['PAGE-1'][0], front['PAGE-3'][0])
+            self.assertGreater(back['PAGE-2'][0], back['PAGE-4'][0])
+
+    def numbered_pdf(self, count, width=100, height=140, trim=None):
+        source = fitz.open()
+        for number in range(1, count + 1):
+            page = source.new_page(width=width, height=height)
+            if trim:
+                page.set_trimbox(fitz.Rect(trim))
+            page.insert_text((10, 30), f'PAGE-{number}')
+        payload = source.tobytes()
+        source.close()
+        return payload
+
+    def sheet_words(self, settings, payload):
+        with self.post('/api/process', {'workflow': json.dumps([settings])}, payload) as response:
+            with fitz.open(stream=response.read(), filetype='pdf') as doc:
+                return [sorted((w[0], w[4]) for w in page.get_text('words')) for page in doc]
+
+    def test_imposition_orders(self):
+        base = {'mode': 'imposer', 'imposer_rows': 1, 'imposer_columns': 2,
+            'imposer_draw_sheet_labels': False}
+        sheets = self.sheet_words({**base, 'imposer_repeat_count': 1, 'imposer_order': 'cut_stack'}, self.numbered_pdf(6))
+        self.assertEqual([[w for _, w in s] for s in sheets], [['PAGE-1', 'PAGE-4'], ['PAGE-2', 'PAGE-5'], ['PAGE-3', 'PAGE-6']])
+        sheets = self.sheet_words({**base, 'imposer_columns': 4, 'imposer_repeat_count': 2, 'imposer_order': 'collate'}, self.numbered_pdf(2))
+        self.assertEqual([w for _, w in sheets[0]], ['PAGE-1', 'PAGE-2', 'PAGE-1', 'PAGE-2'])
+        sheets = self.sheet_words({**base, 'imposer_columns': 4, 'imposer_repeat_count': 2}, self.numbered_pdf(2))
+        self.assertEqual([w for _, w in sheets[0]], ['PAGE-1', 'PAGE-1', 'PAGE-2', 'PAGE-2'])
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.post('/api/process', {'workflow': json.dumps([{**base, 'imposer_order': 'booklet'}])})
+        self.assertEqual(error.exception.code, 422)
+
+    def test_imposition_preview_matches_export_for_all_options(self):
+        payload = self.numbered_pdf(5, 120, 80, trim=(6, 4, 112, 74))
+        settings = {'mode': 'imposer', 'imposer_rows': 2, 'imposer_columns': 2, 'imposer_repeat_count': 1,
+            'imposer_order': 'cut_stack', 'imposer_duplex': True, 'imposer_rotation': '90',
+            'imposer_fit_mode': 'actual', 'imposer_scale_percent': 90, 'imposer_align': 'top-left',
+            'imposer_crop_marks': True, 'imposer_add_blanks': False, 'imposer_draw_sheet_labels': False}
+        with self.post('/api/process', {'workflow': json.dumps([settings])}, payload) as response:
+            exported = response.read()
+        with self.post('/api/process', {'workflow': json.dumps([{**settings, 'imposer_preview_sheet': 0}])}, payload) as response:
+            preview = response.read()
+        with fitz.open(stream=exported, filetype='pdf') as out, fitz.open(stream=preview, filetype='pdf') as plan:
+            self.assertEqual(len(plan), 2)
+            for index in range(2):
+                self.assertEqual(out[index].get_pixmap().samples, plan[index].get_pixmap().samples)
+
+    def test_actual_size_overflow_is_rejected(self):
+        settings = {'mode': 'imposer', 'imposer_sheet': 'A4', 'imposer_rows': 1, 'imposer_columns': 1,
+            'imposer_repeat_count': 1, 'imposer_fit_mode': 'actual', 'imposer_scale_percent': 1000}
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.post('/api/process', {'workflow': json.dumps([settings])})
+        self.assertEqual(error.exception.code, 422)
+
+    def test_crop_marks_follow_trim_box_for_every_rotation(self):
+        sys.path.insert(0, 'engine')
+        from types import SimpleNamespace
+        from imposer import settings_from_args, placement, mm_to_pt
+        source = fitz.open()
+        page = source.new_page(width=120, height=80)
+        trim = fitz.Rect(4, 8, 110, 70)
+        page.set_trimbox(trim)
+        page.draw_rect(trim, color=None, fill=(0, 0, 0))
+        for rotation in ['0', '90', '180', '270']:
+            with self.subTest(rotation=rotation):
+                config = settings_from_args(SimpleNamespace(imposer_sheet='A4', imposer_rotation=rotation,
+                    imposer_fit_mode='actual'))
+                cell = fitz.Rect(20, 30, 20 + mm_to_pt(100), 30 + mm_to_pt(100))
+                target, rotate, trim_rect = placement(config, page, cell)
+                sheet = fitz.open()
+                surface = sheet.new_page(width=600, height=800)
+                surface.show_pdf_page(target, source, 0, keep_proportion=False, rotate=rotate)
+                ink = fitz.Rect()
+                for drawing in surface.get_drawings():
+                    ink |= drawing['rect']
+                for actual, expected in zip(ink, trim_rect):
+                    self.assertAlmostEqual(actual, expected, delta=0.5)
+                sheet.close()
+        source.close()
 
     def test_blank_imposition_positions_have_no_production_ink(self):
         settings = {'mode': 'imposer', 'imposer_rows': 1, 'imposer_columns': 2,

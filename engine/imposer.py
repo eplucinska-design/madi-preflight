@@ -22,6 +22,15 @@ SHEET_PRESETS_MM: dict[str, tuple[float, float]] = {
 }
 
 
+ORDERS = {"repeat", "collate", "cut_stack"}
+ROTATIONS = {"auto", "0", "90", "180", "270"}
+ALIGN_X = {"left": 0.0, "center": 0.5, "right": 1.0}
+ALIGN_Y = {"top": 0.0, "center": 0.5, "bottom": 1.0}
+MAX_SHEETS = 2000
+# CMYK 100/100/100/100: registration colour, present on every separation.
+REGISTRATION = (1.0, 1.0, 1.0, 1.0)
+
+
 def mm_to_pt(value: float) -> float:
     return float(value) * PT_PER_MM
 
@@ -77,6 +86,19 @@ class ImposerSettings:
     draw_numbers: bool
     draw_sheet_labels: bool
     fit_mode: str
+    order: str = "repeat"
+    rotation: str = "auto"
+    scale_percent: float = 100.0
+    align: str = "center"
+    mark_length_mm: float = 4.0
+    mark_offset_mm: float = 2.0
+
+
+def _choice(args: SimpleNamespace, name: str, default: str, allowed: set[str]) -> str:
+    value = str(getattr(args, name, default)).strip().lower()
+    if value not in allowed:
+        raise ValueError(f"Nieprawidlowa wartosc impozycji: {name}.")
+    return value
 
 
 def settings_from_args(args: SimpleNamespace) -> ImposerSettings:
@@ -90,6 +112,18 @@ def settings_from_args(args: SimpleNamespace) -> ImposerSettings:
     repeat_raw = str(getattr(args, "imposer_repeat_count", "1")).strip().lower()
     repeat_count = 1 if repeat_raw in {"", "auto"} else max(_int_arg(args, "imposer_repeat_count", 1), 1)
     auto_positions = _bool_arg(args, "imposer_auto_positions", True)
+    rotation = _choice(args, "imposer_rotation", "auto", ROTATIONS)
+    if rotation == "auto" and not _bool_arg(args, "imposer_auto_rotate", True):
+        rotation = "0"
+    align = _choice(args, "imposer_align", "center", {"center"} | {f"{v}-{h}" for v in ALIGN_Y for h in ALIGN_X})
+    scale_percent = _float_arg(args, "imposer_scale_percent", 100.0)
+    if not 1.0 <= scale_percent <= 1000.0:
+        raise ValueError("Skala impozycji musi miescic sie w zakresie 1-1000%.")
+    fit_mode = str(getattr(args, "imposer_fit_mode", "Fit")).strip().lower()
+    if fit_mode in {"non-prop fill", "nonprop fill", "nonprop_fill", "stretch"}:
+        fit_mode = "fill"
+    if fit_mode not in {"fit", "fill", "actual"}:
+        raise ValueError("Nieprawidlowe dopasowanie uzytku.")
 
     return ImposerSettings(
         sheet_width_mm=sheet_width_mm,
@@ -113,7 +147,13 @@ def settings_from_args(args: SimpleNamespace) -> ImposerSettings:
         crop_marks=_bool_arg(args, "imposer_crop_marks", False),
         draw_numbers=_bool_arg(args, "imposer_draw_numbers", False),
         draw_sheet_labels=_bool_arg(args, "imposer_draw_sheet_labels", True),
-        fit_mode=str(getattr(args, "imposer_fit_mode", "Fit")).strip().lower(),
+        fit_mode=fit_mode,
+        order=_choice(args, "imposer_order", "repeat", ORDERS),
+        rotation=rotation,
+        scale_percent=scale_percent,
+        align=align,
+        mark_length_mm=max(_float_arg(args, "imposer_mark_length_mm", 4.0), 0.0),
+        mark_offset_mm=max(_float_arg(args, "imposer_mark_offset_mm", 2.0), 0.0),
     )
 
 
@@ -141,27 +181,93 @@ def _slot_rect(settings: ImposerSettings, row: int, col: int, mirror: bool) -> f
     return fitz.Rect(x0, y0, x0 + cell_w, y0 + cell_h)
 
 
-def _slot_pages(src: fitz.Document, repeat_count: int) -> list[int]:
-    pages: list[int] = []
-    for page_index in range(src.page_count):
-        pages.extend([page_index] * repeat_count)
-    return pages
+def _units(page_count: int, duplex: bool) -> list[tuple[int | None, ...]]:
+    """Printable units: a page, or a front/back pair (1-2, 3-4...) for duplex."""
+    if not duplex:
+        return [(index,) for index in range(page_count)]
+    return [(index, index + 1 if index + 1 < page_count else None) for index in range(0, page_count, 2)]
 
 
-def _extend_slots(slots: list[int | None], slots_per_side: int, add_blanks: bool) -> list[int | None]:
-    if not add_blanks:
-        return slots
-    padded = list(slots)
-    while len(padded) < slots_per_side:
-        padded.append(None)
-    return padded
+def sheet_plan(settings: ImposerSettings, page_count: int) -> list[list[list[int | None]]]:
+    """Sheets -> sides -> slots (source page index or None).
+
+    Shared by export and preview, so both place exactly the same pages.
+    Back-side slot k holds the back of the unit printed in front slot k;
+    mirroring of its position is applied when the side is rendered.
+    """
+    slots = settings.rows * settings.columns
+    units = _units(page_count, settings.duplex)
+    if settings.order == "collate":
+        sequence = [unit for _ in range(settings.repeat_count) for unit in units]
+    else:
+        sequence = [unit for unit in units for _ in range(settings.repeat_count)]
+    sheet_count = max((len(sequence) + slots - 1) // slots, 1)
+    if sheet_count > MAX_SHEETS:
+        raise ValueError(f"Impozycja przekracza limit {MAX_SHEETS} arkuszy.")
+    sides = 2 if settings.duplex else 1
+    plan: list[list[list[int | None]]] = []
+    for sheet in range(sheet_count):
+        positions = []
+        for slot in range(slots):
+            # Cut & stack: each position is a stack; sheet n holds item n of every stack.
+            index = slot * sheet_count + sheet if settings.order == "cut_stack" else sheet * slots + slot
+            positions.append(sequence[index] if index < len(sequence) else None)
+        plan.append([[unit[side] if unit is not None else None for unit in positions] for side in range(sides)])
+    return plan
 
 
-def _draw_crop_marks(page: fitz.Page, rect: fitz.Rect) -> None:
-    color = (0.0, 0.0, 0.0)
-    length = mm_to_pt(4.0)
-    offset = mm_to_pt(2.0)
-    width = 0.25
+def _rotation(settings: ImposerSettings, src_rect: fitz.Rect, cell: fitz.Rect) -> int:
+    if settings.rotation != "auto":
+        return int(settings.rotation)
+    return 90 if (src_rect.width > src_rect.height) != (cell.width > cell.height) else 0
+
+
+def _rotate_insets(insets: tuple[float, float, float, float], rotate: int) -> tuple[float, float, float, float]:
+    """Map (left, top, right, bottom) insets through show_pdf_page rotation (counter-clockwise)."""
+    left, top, right, bottom = insets
+    return {
+        0: (left, top, right, bottom),
+        90: (top, right, bottom, left),
+        180: (right, bottom, left, top),
+        270: (bottom, left, top, right),
+    }[rotate]
+
+
+def placement(settings: ImposerSettings, page: fitz.Page, cell: fitz.Rect) -> tuple[fitz.Rect, int, fitz.Rect]:
+    """Target rectangle, rotation and trim rectangle of one page placed in a cell."""
+    src = page.rect
+    rotate = _rotation(settings, src, cell)
+    width, height = (src.height, src.width) if rotate in (90, 270) else (src.width, src.height)
+    if settings.fit_mode == "fill":
+        target = fitz.Rect(cell)
+    else:
+        scale = min(cell.width / width, cell.height / height) if settings.fit_mode == "fit" else settings.scale_percent / 100.0
+        w, h = width * scale, height * scale
+        if settings.fit_mode == "actual" and (w > cell.width + 0.5 or h > cell.height + 0.5):
+            raise ValueError(
+                f"Uzytek {w / PT_PER_MM:.1f} x {h / PT_PER_MM:.1f} mm nie miesci sie w pozycji "
+                f"{cell.width / PT_PER_MM:.1f} x {cell.height / PT_PER_MM:.1f} mm."
+            )
+        vertical, _, horizontal = settings.align.partition("-")
+        fx = ALIGN_X.get(horizontal or "center", 0.5)
+        fy = ALIGN_Y.get(vertical, 0.5)
+        x0 = cell.x0 + (cell.width - w) * fx
+        y0 = cell.y0 + (cell.height - h) * fy
+        target = fitz.Rect(x0, y0, x0 + w, y0 + h)
+    crop, trim = page.cropbox, page.trimbox
+    insets = (max(trim.x0 - crop.x0, 0), max(trim.y0 - crop.y0, 0), max(crop.x1 - trim.x1, 0), max(crop.y1 - trim.y1, 0))
+    left, top, right, bottom = _rotate_insets(insets, rotate)
+    sx, sy = target.width / width, target.height / height
+    trim_rect = fitz.Rect(target.x0 + left * sx, target.y0 + top * sy, target.x1 - right * sx, target.y1 - bottom * sy)
+    return target, rotate, trim_rect
+
+
+def _draw_crop_marks(page: fitz.Page, rect: fitz.Rect, settings: ImposerSettings, bleed: float) -> None:
+    length = mm_to_pt(settings.mark_length_mm)
+    # Marks never reach into the bleed of the placed page.
+    offset = max(mm_to_pt(settings.mark_offset_mm), bleed)
+    if length <= 0:
+        return
     coords = (
         ((rect.x0 - offset - length, rect.y0), (rect.x0 - offset, rect.y0)),
         ((rect.x0, rect.y0 - offset - length), (rect.x0, rect.y0 - offset)),
@@ -173,30 +279,12 @@ def _draw_crop_marks(page: fitz.Page, rect: fitz.Rect) -> None:
         ((rect.x1, rect.y1 + offset), (rect.x1, rect.y1 + offset + length)),
     )
     for start, end in coords:
-        page.draw_line(fitz.Point(*start), fitz.Point(*end), color=color, width=width)
-
-
-def _place_pdf_page(
-    sheet: fitz.Page,
-    src: fitz.Document,
-    source_page_index: int,
-    rect: fitz.Rect,
-    settings: ImposerSettings,
-) -> None:
-    src_rect = src[source_page_index].rect
-    rotate = 0
-    if settings.auto_rotate:
-        src_landscape = src_rect.width > src_rect.height
-        dst_landscape = rect.width > rect.height
-        if src_landscape != dst_landscape:
-            rotate = 90
-    keep = settings.fit_mode not in {"fill", "non-prop fill", "nonprop fill", "nonprop_fill"}
-    sheet.show_pdf_page(rect, src, source_page_index, keep_proportion=keep, rotate=rotate)
+        page.draw_line(fitz.Point(*start), fitz.Point(*end), color=REGISTRATION, width=0.25)
 
 
 def _draw_blank(sheet: fitz.Page, rect: fitz.Rect) -> None:
     sheet.draw_rect(rect, color=(0.65, 0.65, 0.65), fill=(0.88, 1.0, 1.0), width=0.4)
-    sheet.insert_textbox(rect, "Blank", fontsize=18, color=(0, 0, 0), align=fitz.TEXT_ALIGN_CENTER)
+    sheet.insert_textbox(rect, "Puste", fontsize=18, color=(0, 0, 0), align=fitz.TEXT_ALIGN_CENTER)
 
 
 def _render_side(
@@ -220,61 +308,58 @@ def _render_side(
     for slot_index, source_page_index in enumerate(slots):
         row = slot_index // settings.columns
         col = slot_index % settings.columns
-        rect = _slot_rect(settings, row, col, mirror)
+        cell = _slot_rect(settings, row, col, mirror)
         if source_page_index is None:
+            # Empty positions get no production ink; the fill exists only in preview.
             if settings.add_blanks and preview:
-                _draw_blank(sheet, rect)
-        else:
-            _place_pdf_page(sheet, src, source_page_index, rect, settings)
+                _draw_blank(sheet, cell)
+            continue
+        target, rotate, trim = placement(settings, src[source_page_index], cell)
+        sheet.show_pdf_page(target, src, source_page_index, keep_proportion=False, rotate=rotate)
         if settings.draw_frames:
-            sheet.draw_rect(rect, color=(0.0, 0.45, 1.0), width=0.35)
+            sheet.draw_rect(cell, color=(0.0, 0.45, 1.0), width=0.35)
         if settings.crop_marks:
-            _draw_crop_marks(sheet, rect)
+            bleed = max(trim.x0 - target.x0, trim.y0 - target.y0, target.x1 - trim.x1, target.y1 - trim.y1, 0)
+            _draw_crop_marks(sheet, trim, settings, bleed)
         if settings.draw_numbers:
-            label = str(source_page_index + 1) if source_page_index is not None else "Blank"
-            marker = fitz.Rect(rect.x0 + rect.width / 2 - 11, rect.y0 + rect.height / 2 - 11, rect.x0 + rect.width / 2 + 11, rect.y0 + rect.height / 2 + 11)
+            label = str(source_page_index + 1)
+            marker = fitz.Rect(cell.x0 + cell.width / 2 - 11, cell.y0 + cell.height / 2 - 11, cell.x0 + cell.width / 2 + 11, cell.y0 + cell.height / 2 + 11)
             sheet.draw_oval(marker, color=(1.0, 0.0, 0.55), fill=(0.85, 1.0, 1.0), width=0.4)
             sheet.insert_textbox(marker, label, fontsize=10, color=(0, 0, 0), align=fitz.TEXT_ALIGN_CENTER)
+
+
+def render_sheets(src: fitz.Document, settings: ImposerSettings, out: fitz.Document, only_sheet: int | None = None) -> int:
+    """Render all sheets (export) or one sheet (preview); returns the sheet count."""
+    if settings.rows * settings.columns <= 0:
+        raise ValueError("Imposer wymaga co najmniej jednej pozycji na arkuszu.")
+    if src.page_count <= 0:
+        raise ValueError("PDF wejsciowy nie zawiera stron.")
+    plan = sheet_plan(settings, src.page_count)
+    if only_sheet is not None and not 0 <= only_sheet < len(plan):
+        raise ValueError("Numer arkusza poza zakresem.")
+    for index, sides in enumerate(plan):
+        if only_sheet is not None and index != only_sheet:
+            continue
+        for side, slots in enumerate(sides):
+            label = ("Tyl" if side else "Przod") if settings.duplex else "Arkusz"
+            _render_side(out, src, settings, slots, label, bool(side and settings.mirror_back), index + 1, preview=only_sheet is not None)
+    return len(plan)
 
 
 def process_imposer_pdf(args: SimpleNamespace) -> None:
     input_path = Path(args.input)
     output_path = Path(args.output)
     settings = settings_from_args(args)
-    slots_per_side = settings.rows * settings.columns
-    if slots_per_side <= 0:
-        raise ValueError("Imposer wymaga co najmniej jednej pozycji na arkuszu.")
     output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with fitz.open(str(input_path)) as src:
-        if src.page_count <= 0:
-            raise ValueError("PDF wejsciowy nie zawiera stron.")
-        pages = _slot_pages(src, settings.repeat_count)
-        out = fitz.open()
-        try:
-            if settings.duplex:
-                chunk_size = slots_per_side * 2
-                sheet_number = 0
-                for start in range(0, len(pages), chunk_size):
-                    sheet_number += 1
-                    front = _extend_slots([page for page in pages[start : start + slots_per_side]], slots_per_side, settings.add_blanks)
-                    back = _extend_slots([page for page in pages[start + slots_per_side : start + chunk_size]], slots_per_side, settings.add_blanks)
-                    _render_side(out, src, settings, front, "Front side", False, sheet_number)
-                    _render_side(out, src, settings, back, "Back side", settings.mirror_back, sheet_number)
-            else:
-                sheet_number = 0
-                for start in range(0, len(pages), slots_per_side):
-                    sheet_number += 1
-                    side = _extend_slots([page for page in pages[start : start + slots_per_side]], slots_per_side, settings.add_blanks)
-                    _render_side(out, src, settings, side, "Sheet", False, sheet_number)
-            out.save(str(output_path), garbage=4, deflate=True)
-        finally:
-            out.close()
+    with fitz.open(str(input_path)) as src, fitz.open() as out:
+        render_sheets(src, settings, out)
+        out.save(str(output_path), garbage=4, deflate=True)
     logging.info(
-        "Imposer: zapisano %s, arkusz %.2f x %.2f mm, uklad %d x %d.",
+        "Imposer: zapisano %s, arkusz %.2f x %.2f mm, uklad %d x %d, kolejnosc %s.",
         output_path,
         settings.sheet_width_mm,
         settings.sheet_height_mm,
         settings.columns,
         settings.rows,
+        settings.order,
     )

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import fitz
 import foil_preflight as engine
-from imposer import process_imposer_pdf, settings_from_args, _render_side, _extend_slots
+from imposer import process_imposer_pdf, settings_from_args, render_sheets
 from cleanup_marks import process_cleanup_marks_pdf
 
 
@@ -95,21 +95,9 @@ def run(step, src, out):
                 settings[key] = value
         args = SimpleNamespace(input=src, output=out, **settings)
         if 'imposer_preview_sheet' in step:
-            config = settings_from_args(args)
-            index = int(step['imposer_preview_sheet'])
-            slots_per_side = config.rows * config.columns
-            sides = 2 if config.duplex else 1
+            # Same plan and placement as export; only blank positions get a preview fill.
             with fitz.open(src) as document, fitz.open() as preview:
-                total = len(document) * config.repeat_count
-                sheet_count = (total + slots_per_side*sides - 1) // (slots_per_side*sides)
-                if not 0 <= index < sheet_count:
-                    raise ValueError('Numer arkusza poza zakresem.')
-                for side in range(sides):
-                    start = (index*sides + side) * slots_per_side
-                    slots = [slot // config.repeat_count for slot in range(start, min(start+slots_per_side, total))]
-                    slots = _extend_slots(slots, slots_per_side, config.add_blanks)
-                    _render_side(preview, document, config, slots,
-                        'Back side' if side else 'Front side', bool(side and config.mirror_back), index+1, preview=True)
+                render_sheets(document, settings_from_args(args), preview, int(step['imposer_preview_sheet']))
                 preview.save(out, garbage=4, deflate=True)
             return
         return process_imposer_pdf(args)
