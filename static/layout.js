@@ -13,7 +13,22 @@ const direction=side==='left'||document.body.classList.contains('imposing')?1:-1
 const move=e=>{layout[side]=Math.round(Math.min(max,Math.max(min,start+(e.clientX-startX)*direction)));applyLayout();};const up=()=>{handle.classList.remove('dragging');handle.removeEventListener('pointermove',move);saveLayout();};handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',up,{once:true});});handle.addEventListener('dblclick',()=>{layout[side]=side==='left'?220:330;applyLayout();saveLayout();});}
 resizer(document.querySelector('.pages-panel'),'left',150,420);
 resizer($('properties'),'right',260,560);
-applyLayout();icons();
+// Acrobat-like arrangement: view toolbar above the document, thumbnails left, tool list right.
+const docToolbar=document.createElement('div');docToolbar.className='doc-toolbar';docToolbar.setAttribute('role','toolbar');docToolbar.setAttribute('aria-label','Widok dokumentu');
+const group=(...ids)=>{const box=document.createElement('div');box.className='doc-toolbar-group';for(const id of ids)box.append($(id));return box;};
+docToolbar.append(group('select-tool','hand-tool'),group('prev','page-count','next'),group('zoom-out-rail','zoom','zoom-in-rail','fit-rail'));
+document.querySelector('.stage').prepend(docToolbar);document.querySelector('.floating-view').remove();
+const rail=document.querySelector('.tool-rail');rail.replaceChildren();rail.setAttribute('aria-label','Panele nawigacji');
+const thumbs=document.createElement('button');thumbs.className='icon-button';thumbs.title='Miniatury stron ( [ )';thumbs.setAttribute('aria-label','Miniatury stron');thumbs.append(icon('copy'));thumbs.onclick=()=>leftToggle.click();rail.append(thumbs);
+const toolsTab=document.createElement('button');toolsTab.dataset.panel='tools';toolsTab.setAttribute('role','tab');toolsTab.textContent='Narzędzia';toolsTab.onclick=()=>setPanel('tools');
+document.querySelector('.panel-tabs').prepend(toolsTab);
+const toolsSection=document.createElement('section');toolsSection.id='panel-tools';toolsSection.hidden=true;toolsSection.append(library);document.querySelector('.panel-body').prepend(toolsSection);
+libraryTabs.remove();
+showLibrary=function(){library.hidden=false;$('page-list').hidden=false;document.querySelector('.pages-panel>.panel-heading').hidden=false;};
+showLibrary();
+const syncRail=()=>thumbs.classList.toggle('active',!layout.leftCollapsed);leftToggle.addEventListener('click',syncRail);
+if(mode!=='imposer')setPanel('tools');
+applyLayout();syncRail();icons();
 const shortcuts={'[':()=>leftToggle.click(),']':()=>rightToggle.click(),v:()=>$('select-tool').click(),h:()=>$('hand-tool').click(),PageUp:()=>$('prev').click(),PageDown:()=>$('next').click()};
 const ctrlShortcuts={'=':'zoom-in-rail','+':'zoom-in-rail','-':'zoom-out-rail','0':'fit-rail',Enter:'process'};
 document.addEventListener('keydown',event=>{const typing=event.target.closest?.('input,select,textarea,[contenteditable=true]');if((event.ctrlKey||event.metaKey)&&ctrlShortcuts[event.key]){const target=$(ctrlShortcuts[event.key]);if(target&&!target.disabled){event.preventDefault();target.click();}return;}if(typing||event.ctrlKey||event.metaKey||event.altKey)return;const action=shortcuts[event.key];if(action){event.preventDefault();action();}});

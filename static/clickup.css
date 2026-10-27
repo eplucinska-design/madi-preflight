@@ -29,6 +29,10 @@ input:not([type=checkbox]),select{border-radius:var(--radius);border-color:var(-
 .statusbar{background:var(--bg);border-top:1px solid var(--border)}
 body.light .menubar,body.light .document-tabs,body.light .statusbar{background:var(--bg)}body.light .tool-rail{background:var(--panel)}
 #object-info{border-radius:var(--radius)}
+/* Pasek widoku nad dokumentem (zastępuje linijkę-atrapę i pływający pasek) */
+.ruler-x{display:none}.doc-toolbar{height:38px;flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:6px;background:var(--panel);border-bottom:1px solid var(--border);padding:0 10px}.doc-toolbar-group{display:flex;align-items:center;gap:2px;padding:0 6px;border-right:1px solid var(--border)}.doc-toolbar-group:last-child{border-right:0}.doc-toolbar .icon-button{width:28px;height:28px}.doc-toolbar .page-count{min-width:50px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums}.doc-toolbar select{width:92px;height:26px;font-size:12px}
+body.imposing .doc-toolbar{display:none}
+.panel-body>#panel-tools{padding:0}#panel-tools .tool-library{overflow:visible}
 /* Regulowane i zwijane panele */
 .panel-resizer{position:absolute;top:0;bottom:0;width:6px;cursor:col-resize;z-index:5}.panel-resizer:hover,.panel-resizer.dragging{background:var(--accent-soft);box-shadow:inset -2px 0 0 var(--accent)}.pages-panel>.panel-resizer{right:-3px}.properties>.panel-resizer{left:-3px}body.imposing .properties>.panel-resizer{left:auto;right:-3px}
 body.left-collapsed .pages-panel,body.right-collapsed .properties{display:none}
