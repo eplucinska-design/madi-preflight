@@ -13,6 +13,7 @@ from cleanup_marks import process_cleanup_marks_pdf
 import colors
 import page_boxes
 import color_ops
+import page_ops
 
 
 def truth(value):
@@ -80,6 +81,12 @@ def run(step, src, out):
     if mode == 'cleanup':
         return process_cleanup_marks_pdf(SimpleNamespace(input=src, output=out, **{
             key: value for key, value in step.items() if key.startswith('cleanup_')}))
+    if mode == 'delete_pages':
+        return page_ops.delete_pages(src, out, str(step.get('delete_range', '')))
+    if mode == 'insert_blank':
+        number = lambda key, default: float(str(step.get(key, default) or default).replace(',', '.'))
+        return page_ops.insert_blank(src, out, str(step.get('blank_position', 'after')), int(number('blank_page', 1)),
+            int(number('blank_count', 1)), number('blank_width_mm', 0), number('blank_height_mm', 0))
     if mode == 'boxes':
         number = lambda key: float(str(step.get(key, 0) or 0).replace(',', '.'))
         values = [number(key) for key in ('boxes_top_mm', 'boxes_bottom_mm', 'boxes_left_mm', 'boxes_right_mm')]

@@ -166,6 +166,7 @@ class Handler(BaseHTTPRequestHandler):
                  '/menus.js': ('menus.js', 'text/javascript; charset=utf-8'),
                  '/sampler.js': ('sampler.js', 'text/javascript; charset=utf-8'),
                  '/montax.js': ('montax.js', 'text/javascript; charset=utf-8'),
+                 '/documents.js': ('documents.js', 'text/javascript; charset=utf-8'),
                  '/shell.js': ('shell.js', 'text/javascript; charset=utf-8'),
                  '/shell.css': ('shell.css', 'text/css; charset=utf-8'),
                  '/ux.js': ('ux.js', 'text/javascript; charset=utf-8'),
@@ -192,7 +193,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(403, {'error': 'Niedozwolone zrodlo zapytania.'})
             if self.rate_limited():
                 return self.reply(429, {'error': 'Zbyt wiele zapytan. Sprobuj za minute.'})
-            if self.path not in {'/api/analyze', '/api/process', '/api/inspect', '/api/spots', '/api/sample', '/api/preflight'}:
+            if self.path not in {'/api/analyze', '/api/process', '/api/inspect', '/api/spots', '/api/sample', '/api/preflight', '/api/merge', '/api/split'}:
                 return self.reply(404, {'error': 'Nie znaleziono.'})
             size = int(self.headers.get('Content-Length', 0))
             if not 0 < size <= MAX_UPLOAD:
@@ -202,12 +203,14 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Wymagany formularz z plikiem PDF.')
             message = BytesParser(policy=default).parsebytes(
                 ('Content-Type: ' + content_type + '\r\nMIME-Version: 1.0\r\n\r\n').encode() + self.rfile.read(size))
-            fields, pdf = {}, None
+            fields, pdf, extras = {}, None, []
             for part in message.iter_parts():
                 name = part.get_param('name', header='content-disposition')
                 data = part.get_payload(decode=True)
                 if name == 'file':
                     pdf = data
+                elif name and name.startswith('file_') and data:
+                    extras.append((name, data))
                 elif name and data is not None:
                     fields[name] = data.decode('utf-8')
             if not pdf or not pdf.startswith(b'%PDF-'):
@@ -237,6 +240,33 @@ class Handler(BaseHTTPRequestHandler):
                         error = 'Nie udalo sie odczytac separacji.'
                     raise ValueError(error)
                 return self.reply(200, json.loads(completed.stdout.decode('utf-8', 'replace').strip().splitlines()[-1]))
+            if self.path in {'/api/merge', '/api/split'}:
+                with tempfile.TemporaryDirectory(prefix='madi-web-') as work:
+                    src = Path(work) / 'input.pdf'
+                    src.write_bytes(pdf)
+                    if self.path == '/api/merge':
+                        inputs = [str(src)]
+                        for index, (_, data) in enumerate(sorted(extras, key=lambda item: int(item[0][5:] or 0))):
+                            if not data.startswith(b'%PDF-'):
+                                raise ValueError('Kazdy laczony plik musi byc PDF.')
+                            part = Path(work) / f'part{index}.pdf'
+                            part.write_bytes(data)
+                            inputs.append(str(part))
+                        out = Path(work) / 'merged.pdf'
+                        completed = run_engine(engine_command('page_ops.py', 'merge', str(out), *inputs), timeout=90)
+                        kind = 'application/pdf'
+                    else:
+                        out = Path(work) / 'parts.zip'
+                        completed = run_engine(engine_command('page_ops.py', 'split', str(src), str(out),
+                            fields.get('split_mode', 'every'), fields.get('split_value', '1'), fields.get('name', 'dokument')), timeout=90)
+                        kind = 'application/zip'
+                    if completed.returncode or not out.exists():
+                        try:
+                            error = json.loads(completed.stderr.decode('utf-8', 'replace').splitlines()[-1])['error']
+                        except (ValueError, KeyError, IndexError):
+                            error = 'Nie udalo sie wykonac operacji na stronach.'
+                        raise ValueError(error)
+                    return self.reply(200, out.read_bytes(), kind)
             if self.path == '/api/preflight':
                 bleed = float(fields.get('bleed', '3'))
                 dpi_error, dpi_warning = int(fields.get('dpi_error', '150')), int(fields.get('dpi_warning', '250'))

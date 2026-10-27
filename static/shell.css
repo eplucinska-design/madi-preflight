@@ -93,6 +93,21 @@ details.dragging{opacity:.4}details.drop-before{box-shadow:inset 0 3px 0 var(--a
 .dock-panel>summary,#fields .field-group>summary{display:flex;align-items:center}
 .ribbon-button[draggable=true],.ribbon-group[draggable=true]{cursor:grab}.ribbon-button.dragging,.ribbon-group.dragging{opacity:.4}
 .ribbon.expanded .ribbon-groups,.ribbon-groups{resize:vertical;overflow:auto;min-height:60px}
+/* Wstążka jako pasek narzędzi Montax: wszystko widoczne, grupy z uchwytem, przeciąganie */
+body.toolbar-ribbon .ribbon-tabs>button[role=tab],body.toolbar-ribbon .ribbon-tabs [title^="Rozwiń"],body.toolbar-ribbon .ribbon-tabs [title^="Zwiń"],body.toolbar-ribbon .ribbon-pane-label,body.toolbar-ribbon .ribbon-caption{display:none!important}
+body.toolbar-ribbon .ribbon-tabs{height:26px;border-bottom:0}
+body.toolbar-ribbon .ribbon-groups{height:auto;max-height:40vh;display:flex;flex-wrap:wrap;align-items:stretch;gap:3px;padding:3px 6px 4px;resize:none}
+body.toolbar-ribbon .ribbon-pane,body.toolbar-ribbon .ribbon-pane[hidden]{display:contents!important}
+body.toolbar-ribbon .ribbon-group{flex-direction:row;align-items:stretch;padding:1px 3px 1px 0;border:1px solid var(--border);border-radius:3px;background:var(--panel)}
+body.toolbar-ribbon .ribbon-group:last-child{border-right:1px solid var(--border)}
+body.toolbar-ribbon .toolbar-grip{display:flex;align-items:center;padding:0 3px;color:var(--muted);cursor:grab;font-size:13px;user-select:none;border-right:1px dotted var(--border);margin-right:2px}
+body.toolbar-ribbon .ribbon-buttons{gap:1px;flex:none}
+body.toolbar-ribbon .ribbon-button{width:auto;min-width:48px;max-width:84px;padding:2px 4px;font-size:10.5px;line-height:1.1;gap:1px}
+body.toolbar-ribbon .ribbon-button svg{width:17px;height:17px}
+body.toolbar-ribbon .ribbon-group.drop-before,body.toolbar-ribbon .ribbon-button.drop-before{box-shadow:inset 3px 0 0 var(--accent)}
+body.toolbar-ribbon .ribbon-pane[data-tab="fav"] .ribbon-group:has(.ribbon-buttons:empty){display:none}
+.merge-list{list-style:none;padding:0;margin:8px 0;display:grid;gap:4px}.merge-list li{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;padding:4px 6px;background:var(--panel2);border-radius:var(--radius);font-size:12px}.merge-list button{min-height:22px;width:26px;padding:0;border:1px solid var(--border)}
+.split-form{display:grid;gap:8px;font-size:12px}.split-form label{display:flex;align-items:center;gap:6px}.split-form input[type=text],.split-form input[type=number]{height:26px}
 /* Raport kontroli */
 .report-box{padding:6px 10px 10px;display:grid;gap:6px}.report-settings{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.report-settings label{font-size:10.5px;color:var(--muted);display:grid;gap:2px}.report-settings input{height:24px}
 .report-run{min-height:28px}.report-summary{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px}.report-source{color:var(--muted);margin-right:auto}

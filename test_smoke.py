@@ -244,6 +244,37 @@ class SmokeTest(unittest.TestCase):
         with self.post('/api/preflight', {}, run({'mode': 'white_overprint_fix'})) as response:
             self.assertNotIn('white_overprint', {item['code'] for item in json.load(response)['issues']})
 
+    def test_page_operations_delete_insert_merge_split(self):
+        import zipfile
+        payload = self.numbered_pdf(5, trim=(5, 5, 95, 135))
+        def run(step, data=payload):
+            with self.post('/api/process', {'workflow': json.dumps([step])}, data) as response:
+                return response.read()
+        with fitz.open(stream=run({'mode': 'delete_pages', 'delete_range': '2,4-5'}), filetype='pdf') as doc:
+            self.assertEqual([page.get_text().strip() for page in doc], ['PAGE-1', 'PAGE-3'])
+        with fitz.open(stream=run({'mode': 'insert_blank', 'blank_position': 'after', 'blank_page': 1, 'blank_count': 2}), filetype='pdf') as doc:
+            self.assertEqual(len(doc), 7)
+            self.assertEqual(doc[1].get_text(), '')
+            self.assertEqual(doc[1].trimbox, doc[0].trimbox)       # blank page sized like its neighbour
+            self.assertIn('PAGE-2', doc[3].get_text())
+        with self.assertRaises(urllib.error.HTTPError):
+            run({'mode': 'delete_pages', 'delete_range': '1-5'})
+        other = self.numbered_pdf(2)
+        body = b''
+        for key, data in (('file', payload), ('file_1', other)):
+            body += f'--x\r\nContent-Disposition: form-data; name="{key}"; filename="{key}.pdf"\r\n\r\n'.encode() + data + b'\r\n'
+        body += b'--x--\r\n'
+        request = urllib.request.Request('http://127.0.0.1:18765/api/merge', data=body,
+            headers={'Content-Type': 'multipart/form-data; boundary=x'})
+        with urllib.request.urlopen(request) as response, fitz.open(stream=response.read(), filetype='pdf') as doc:
+            self.assertEqual(len(doc), 7)
+            self.assertEqual(doc[0].trimbox, fitz.Rect(5, 5, 95, 135))
+        with self.post('/api/split', {'split_mode': 'every', 'split_value': 2, 'name': 'test'}, payload) as response:
+            archive = zipfile.ZipFile(io.BytesIO(response.read()))
+        self.assertEqual(sorted(archive.namelist()), ['test_01_str1-2.pdf', 'test_02_str3-4.pdf', 'test_03_str5.pdf'])
+        with fitz.open(stream=archive.read('test_03_str5.pdf'), filetype='pdf') as doc:
+            self.assertIn('PAGE-5', doc[0].get_text())
+
     def test_cleanup_handles_zero_size_paths(self):
         pdf = pikepdf.Pdf.new()
         page = pdf.add_blank_page(page_size=(200, 200))
