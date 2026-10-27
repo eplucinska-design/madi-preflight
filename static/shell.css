@@ -12,28 +12,28 @@ body.shell.dock-left-off.dock-right-off .desk{grid-template-columns:0 minmax(0,1
 body.shell .layout-toggle,body.shell .panel-resizer{display:none}
 /* Wstążka */
 .ribbon{background:var(--panel);border-bottom:1px solid var(--border)}
-.ribbon-tabs{display:flex;align-items:center;gap:2px;height:32px;padding:0 8px;border-bottom:1px solid var(--border)}
-.ribbon-tabs>button[role=tab]{height:32px;border-radius:0;border-bottom:2px solid transparent;color:var(--muted);padding:0 10px;font-size:12.5px}
+.ribbon-tabs{display:flex;align-items:center;gap:2px;height:28px;padding:0 8px;border-bottom:1px solid var(--border)}
+.ribbon-tabs>button[role=tab]{height:28px;border-radius:0;border-bottom:2px solid transparent;color:var(--muted);padding:0 10px;font-size:12.5px}
 .ribbon-tabs>button[role=tab]:hover:not(:disabled){background:none;color:var(--text)}
 .ribbon-tabs>button[aria-selected=true]{background:none;color:var(--text);border-bottom-color:var(--accent);font-weight:600}
 .ribbon-tabs .spacer{flex:1}.ribbon-tabs .icon-button{width:28px;height:28px}.ribbon-tabs .icon-button.active{background:var(--selected);color:var(--accent)}
 .queue-chip{height:26px;font-size:12px;color:var(--muted)}
-.ribbon-groups{height:76px;padding:4px 8px;background:var(--panel2)}
+.ribbon-groups{height:60px;padding:4px 8px;background:var(--panel2)}
 .ribbon-pane{display:flex;height:100%}
 .ribbon-group{display:flex;flex-direction:column;align-items:center;padding:0 8px;border-right:1px solid var(--border)}
 .ribbon-group:last-child{border-right:0}
 .ribbon-buttons{display:flex;gap:2px;flex:1}
-.ribbon-button{flex-direction:column;gap:2px;width:74px;padding:4px 2px;min-height:0;white-space:normal;line-height:1.15;font-size:11px;color:var(--text)}
-.ribbon-button svg{width:20px;height:20px;stroke-width:1.5;color:var(--accent)}
+.ribbon-button{flex-direction:column;gap:1px;width:62px;padding:3px 2px;min-height:0;white-space:normal;line-height:1.1;font-size:10px;color:var(--text)}
+.ribbon-button svg{width:16px;height:16px;stroke-width:1.6;color:var(--accent)}
 .ribbon-button.active{background:var(--selected);color:var(--accent)}
 .ribbon-button:disabled svg{color:var(--muted)}
 .ribbon-pane-label{display:none}
 .ribbon.expanded .ribbon-groups{height:auto;max-height:46vh;overflow:auto;display:flex;flex-wrap:wrap;gap:6px 0}
-.ribbon.expanded .ribbon-pane{height:72px;border-right:1px solid var(--border-strong,var(--border));padding-right:4px}
+.ribbon.expanded .ribbon-pane{height:58px;border-right:1px solid var(--border-strong,var(--border));padding-right:4px}
 .ribbon.expanded .ribbon-pane-label{display:block;writing-mode:vertical-rl;transform:rotate(180deg);font-size:10.5px;color:var(--accent);font-weight:600;padding:0 2px;text-align:center}
 .ribbon.expanded .ribbon-tabs>button[role=tab]{display:none}
 .ribbon-button.pinned:after{content:'★';position:absolute;top:2px;right:6px;font-size:9px;color:var(--warn)}.ribbon-button{position:relative}
-.ribbon-caption{font-size:10.5px;color:var(--muted);line-height:1;padding-top:2px}
+.ribbon-caption{font-size:9.5px;color:var(--muted);line-height:1;padding-top:2px}
 /* Dok parametrów (lewy) */
 body.shell .operation-title{margin:12px 0 4px;font-size:13px}
 body.shell .panel-body>section{padding:0 12px 12px}
