@@ -162,6 +162,7 @@ class Handler(BaseHTTPRequestHandler):
                  '/usability.js': ('usability.js', 'text/javascript; charset=utf-8'),
                  '/layout.js': ('layout.js', 'text/javascript; charset=utf-8'),
                  '/preflight.js': ('preflight.js', 'text/javascript; charset=utf-8'),
+                 '/panels.js': ('panels.js', 'text/javascript; charset=utf-8'),
                  '/menus.js': ('menus.js', 'text/javascript; charset=utf-8'),
                  '/sampler.js': ('sampler.js', 'text/javascript; charset=utf-8'),
                  '/montax.js': ('montax.js', 'text/javascript; charset=utf-8'),

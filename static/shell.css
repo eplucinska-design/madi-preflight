@@ -82,6 +82,17 @@ body.imposing .sheet-view figcaption{justify-content:center;color:#f2f2f2;font-s
 body.imposing .imposition-topbar{color:#f2f2f2}body.imposing .imposition-topbar>span{color:#e4e4e4}
 body.imposing .sheet-surface{border:1px solid #666;box-shadow:none}
 body.imposing .sheet-caption{color:#f0f0f0}
+/* Ruchome i rozciągane panele, wstążka do przestawiania */
+.float-layer{position:fixed;inset:0;pointer-events:none;z-index:40}
+details.floating{position:fixed;pointer-events:auto;resize:both;overflow:auto;min-width:220px;min-height:80px;background:var(--panel);border:1px solid var(--border-strong,var(--border));border-radius:6px;box-shadow:0 10px 30px #0006;margin:0;column-span:none}
+details.floating>summary{cursor:move;position:sticky;top:0;z-index:1}
+.float-toggle{margin-left:auto;min-height:18px;width:20px;height:18px;padding:0;font-size:12px;line-height:1;color:var(--muted);border-radius:3px}
+.float-toggle:hover:not(:disabled){color:var(--accent)}
+details>summary[draggable=true]{cursor:grab}
+details.dragging{opacity:.4}details.drop-before{box-shadow:inset 0 3px 0 var(--accent)}
+.dock-panel>summary,#fields .field-group>summary{display:flex;align-items:center}
+.ribbon-button[draggable=true],.ribbon-group[draggable=true]{cursor:grab}.ribbon-button.dragging,.ribbon-group.dragging{opacity:.4}
+.ribbon.expanded .ribbon-groups,.ribbon-groups{resize:vertical;overflow:auto;min-height:60px}
 /* Raport kontroli */
 .report-box{padding:6px 10px 10px;display:grid;gap:6px}.report-settings{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.report-settings label{font-size:10.5px;color:var(--muted);display:grid;gap:2px}.report-settings input{height:24px}
 .report-run{min-height:28px}.report-summary{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px}.report-source{color:var(--muted);margin-right:auto}
