@@ -73,6 +73,7 @@ class ImposerSettings:
     auto_rotate: bool
     add_blanks: bool
     draw_frames: bool
+    crop_marks: bool
     draw_numbers: bool
     draw_sheet_labels: bool
     fit_mode: str
@@ -109,6 +110,7 @@ def settings_from_args(args: SimpleNamespace) -> ImposerSettings:
         auto_rotate=_bool_arg(args, "imposer_auto_rotate", True),
         add_blanks=_bool_arg(args, "imposer_add_blanks", True),
         draw_frames=_bool_arg(args, "imposer_draw_frames", False),
+        crop_marks=_bool_arg(args, "imposer_crop_marks", False),
         draw_numbers=_bool_arg(args, "imposer_draw_numbers", False),
         draw_sheet_labels=_bool_arg(args, "imposer_draw_sheet_labels", True),
         fit_mode=str(getattr(args, "imposer_fit_mode", "Fit")).strip().lower(),
@@ -226,6 +228,7 @@ def _render_side(
             _place_pdf_page(sheet, src, source_page_index, rect, settings)
         if settings.draw_frames:
             sheet.draw_rect(rect, color=(0.0, 0.45, 1.0), width=0.35)
+        if settings.crop_marks:
             _draw_crop_marks(sheet, rect)
         if settings.draw_numbers:
             label = str(source_page_index + 1) if source_page_index is not None else "Blank"

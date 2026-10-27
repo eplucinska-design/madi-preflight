@@ -130,6 +130,20 @@ class SmokeTest(unittest.TestCase):
             self.post('/api/process', {'workflow': json.dumps([{**settings, 'imposer_preview_sheet': 1}])})
         self.assertEqual(error.exception.code, 422)
 
+    def test_crop_marks_are_independent_of_frames(self):
+        base = {'mode': 'imposer', 'imposer_rows': 1, 'imposer_columns': 2, 'imposer_repeat_count': 1,
+            'imposer_margin_left_mm': 10, 'imposer_margin_right_mm': 10, 'imposer_margin_top_mm': 10,
+            'imposer_margin_bottom_mm': 10, 'imposer_draw_sheet_labels': False, 'imposer_add_blanks': False}
+        def lines(extra):
+            with self.post('/api/process', {'workflow': json.dumps([{**base, **extra}])}) as response:
+                output = response.read()
+            with fitz.open(stream=output, filetype='pdf') as doc:
+                return len(doc[0].get_drawings())
+        plain = lines({})
+        self.assertGreater(lines({'imposer_crop_marks': True}), plain)
+        self.assertGreater(lines({'imposer_draw_frames': True}), plain)
+        self.assertGreater(lines({'imposer_crop_marks': True}), lines({'imposer_draw_frames': True}))
+
     def test_server_password_and_workspace_assets(self):
         password = 'test-only-password'
         process = subprocess.Popen([sys.executable, 'server.py', '18766'],
