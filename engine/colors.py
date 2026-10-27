@@ -350,7 +350,13 @@ def set_overprint(src, out, spot: str, target: str = "fill", value: bool = True)
         _rewrite_with_paths(pdf, handler)
         pdf.save(out)
     if not count:
-        raise ValueError(f"Brak obiektow w kolorze {spot} do zmiany nadruku (lub stan juz ustawiony).")
+        with pikepdf.open(src) as pdf:
+            item = spot_usage(pdf).get(spot)
+        if item is None or not (item.fill or item.stroke):
+            raise ValueError(f"Kolor {spot} nie jest uzyty w dokumencie.")
+        state = "wlaczony" if value else "wylaczony"
+        raise ValueError(f"Wszystkie obiekty w kolorze {spot} maja juz nadruk {state} (wypelnienie {item.overprint_fill}/{item.fill}, "
+                         f"obrys {item.overprint_stroke}/{item.stroke}). Nic nie zmieniono.")
     return count
 
 

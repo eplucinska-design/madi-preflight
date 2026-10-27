@@ -129,6 +129,12 @@ def report(data: bytes, bleed_mm: float = 3.0, dpi_error: int = 150, dpi_warning
         unused = sorted(name for name, item in usage.items() if not (item.fill or item.stroke or item.images))
         if spots:
             add("info", None, "spots", "Kolory spot w uzyciu: " + ", ".join(spots) + ".")
+        technical = ("cut", "contour", "wykroj", "die", "crease", "big", "perf", "rill")
+        for name, item in sorted(usage.items()):
+            if any(word in name.lower() for word in technical) and item.fill and not item.stroke:
+                add("warning", min(item.pages) if item.pages else None, "dieline_as_fill",
+                    f"Kolor {name} wyglada na linie technologiczna, ale jest uzyty tylko jako wypelnienie "
+                    f"({item.fill} obiektow): linia mogla zostac zamieniona na ksztalt. Ploter wymaga obrysu.")
         if unused:
             add("info", None, "spots_unused", "Zdefiniowane, nieuzywane kolory spot: " + ", ".join(unused) + ".")
         pages = len(doc)

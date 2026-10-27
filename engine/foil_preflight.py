@@ -1853,7 +1853,7 @@ def process_dieline_pdf(args: argparse.Namespace) -> None:
         processed_pages.append((page, instructions, spaces_to_remove))
 
     if not any(plate_parts.values()):
-        raise RuntimeError("No matching dieline stroke objects were found.")
+        raise RuntimeError("Nie znaleziono obrysow w kolorze linii technologicznych. Silnik wydziela tylko obrysy; linia zamieniona na ksztalt (wypelnienie) nie jest obslugiwana i dalaby podwojne ciecie.")
 
     dieline_bbox = None
     if getattr(args, "page_size", "source") == PAGE_SIZE_DIELINE_BOUNDS:
@@ -2003,7 +2003,7 @@ def process_combined_pdf(args: argparse.Namespace) -> None:
     if not matrix_plate_instructions:
         raise RuntimeError("No matching foil/plate objects were found.")
     if not any(dieline_parts.values()):
-        raise RuntimeError("No matching dieline stroke objects were found.")
+        raise RuntimeError("Nie znaleziono obrysow w kolorze linii technologicznych. Silnik wydziela tylko obrysy; linia zamieniona na ksztalt (wypelnienie) nie jest obslugiwana i dalaby podwojne ciecie.")
 
     dieline_bbox = None
     if getattr(args, "page_size", "source") == PAGE_SIZE_DIELINE_BOUNDS:
@@ -2718,7 +2718,7 @@ def process_format_by_dieline_pdf(args: argparse.Namespace) -> None:
             plate_parts[spec.name].extend(split.plate)
 
     if not any(plate_parts.values()):
-        raise RuntimeError("Nie znaleziono linii ciecia pasujacej do wskazanego koloru.")
+        raise RuntimeError("Nie znaleziono linii ciecia (obrysu) w wskazanym kolorze. Linia zamieniona na ksztalt (wypelnienie) nie jest obslugiwana.")
 
     dieline_bbox = combined_instructions_bbox(plate_parts)
     if dieline_bbox is None:

@@ -90,7 +90,7 @@ def _collect_redactions(page: fitz.Page, edge_pt: float, max_width_pt: float, in
     redactions: list[fitz.Rect] = []
 
     for drawing in page.get_drawings(extended=True):
-        rect = fitz.Rect(drawing.get("rect") or fitz.EMPTY_RECT)
+        rect = fitz.Rect(drawing.get("rect") or fitz.Rect())
         if rect.is_empty or not rect.intersects(page_rect):
             continue
         if not include_inside and not _near_rect_edge(rect, reference, edge_pt):
@@ -103,7 +103,7 @@ def _collect_redactions(page: fitz.Page, edge_pt: float, max_width_pt: float, in
         for line in block.get("lines", []):
             for span in line.get("spans", []):
                 value = span.get("text", "")
-                rect = fitz.Rect(span.get("bbox", fitz.EMPTY_RECT))
+                rect = fitz.Rect(span.get("bbox", fitz.Rect()))
                 if rect.is_empty or not rect.intersects(page_rect):
                     continue
                 if _span_looks_like_mark(value, rect, reference, edge_pt):

@@ -166,6 +166,17 @@ class SmokeTest(unittest.TestCase):
         self.assertGreater(result['counts']['error'], 0)
         self.assertIn('nie zastepuje', result['limitations'])
 
+    def test_cleanup_handles_zero_size_paths(self):
+        pdf = pikepdf.Pdf.new()
+        page = pdf.add_blank_page(page_size=(200, 200))
+        page.Contents = pdf.make_stream(b'0 0 0 1 K 0.25 w 10 10 m 10 10 l S 5 100 m 15 100 l S q 0 1 0 0 k 50 50 100 100 re f Q')
+        buf = io.BytesIO()
+        pdf.save(buf)
+        with self.post('/api/process', {'mode': 'cleanup'}, buf.getvalue()) as response:
+            with fitz.open(stream=response.read(), filetype='pdf') as doc:
+                self.assertEqual(len(doc), 1)
+                self.assertTrue(any(d.get('fill') for d in doc[0].get_drawings()))
+
     def test_invalid_input(self):
         for fields, data in [({}, b'bad'), ({'page': '999'}, self.pdf)]:
             with self.assertRaises(urllib.error.HTTPError) as error:
