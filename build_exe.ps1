@@ -1,4 +1,5 @@
 # Builds dist\MADI Preflight\MADI Preflight.exe (one folder, no installation needed).
+# Requires: python -m pip install -r requirements-desktop.txt
 # Optional: -Target "X:\folder" copies the finished folder there.
 param([string]$Target = "")
 $ErrorActionPreference = "Stop"
