@@ -10,6 +10,7 @@ import fitz
 import foil_preflight as engine
 from imposer import process_imposer_pdf, settings_from_args, render_sheets
 from cleanup_marks import process_cleanup_marks_pdf
+import colors
 
 
 def truth(value):
@@ -77,6 +78,13 @@ def run(step, src, out):
     if mode == 'cleanup':
         return process_cleanup_marks_pdf(SimpleNamespace(input=src, output=out, **{
             key: value for key, value in step.items() if key.startswith('cleanup_')}))
+    if mode == 'spot_rename':
+        return colors.rename_spot(src, out, str(step.get('spot_name', '')), str(step.get('spot_new_name', '')))
+    if mode == 'spot_extract':
+        return colors.extract_spot(src, out, str(step.get('spot_name', '')).strip(), str(step.get('spot_placement', 'after')))
+    if mode == 'spot_overprint':
+        return colors.set_overprint(src, out, str(step.get('spot_name', '')).strip(),
+            str(step.get('overprint_target', 'fill')), truth(step.get('overprint_value', True)))
     if mode == 'imposer':
         settings = {key: value for key, value in step.items() if key.startswith('imposer_')}
         for key, lo, hi, default in [('imposer_rows', 1, 20, 2), ('imposer_columns', 1, 20, 2),

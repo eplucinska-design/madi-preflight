@@ -91,7 +91,7 @@ class Handler(BaseHTTPRequestHandler):
             parsed_origin = urllib.parse.urlsplit(origin or '')
             if origin and (parsed_origin.scheme not in {'http', 'https'} or parsed_origin.netloc != self.headers.get('Host', '')):
                 return self.reply(403, {'error': 'Niedozwolone zrodlo zapytania.'})
-            if self.path not in {'/api/analyze', '/api/process', '/api/inspect'}:
+            if self.path not in {'/api/analyze', '/api/process', '/api/inspect', '/api/spots'}:
                 return self.reply(404, {'error': 'Nie znaleziono.'})
             size = int(self.headers.get('Content-Length', 0))
             if not 0 < size <= MAX_UPLOAD:
@@ -111,6 +111,16 @@ class Handler(BaseHTTPRequestHandler):
                     fields[name] = data.decode('utf-8')
             if not pdf or not pdf.startswith(b'%PDF-'):
                 raise ValueError('Wybierz poprawny plik PDF.')
+            if self.path == '/api/spots':
+                # Content-stream walk runs in the isolated, time-limited child like other operations.
+                with tempfile.TemporaryDirectory(prefix='madi-web-') as work:
+                    src = Path(work) / 'input.pdf'
+                    src.write_bytes(pdf)
+                    completed = subprocess.run([sys.executable, str(ROOT / 'engine' / 'spots.py'), str(src)],
+                        capture_output=True, timeout=60)
+                if completed.returncode:
+                    raise ValueError('Nie udalo sie odczytac kolorow spot.')
+                return self.reply(200, json.loads(completed.stdout))
             if self.path in {'/api/analyze', '/api/inspect'}:
                 with PDF_LOCK, fitz.open(stream=pdf, filetype='pdf') as doc:
                     if doc.needs_pass:

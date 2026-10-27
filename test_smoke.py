@@ -77,6 +77,40 @@ class SmokeTest(unittest.TestCase):
             self.assertAlmostEqual(actual, expected * mm, places=2)
         self.assertAlmostEqual(boxes['mediabox'][3], 200 * mm, places=2)
 
+    def spots(self, data=None):
+        with self.post('/api/spots', {}, data) as response:
+            return {item['name']: item for item in json.load(response)['spots']}
+
+    def process(self, step):
+        with self.post('/api/process', {'workflow': json.dumps([step])}) as response:
+            return response.read()
+
+    def test_spot_report_counts_fill_and_stroke(self):
+        hs = self.spots()['HS']
+        self.assertEqual((hs['fill'], hs['stroke'], hs['overprint_fill']), (1, 1, 0))
+        self.assertEqual(hs['alternate'], 'DeviceCMYK')
+
+    def test_spot_rename_and_overprint_in_exported_file(self):
+        renamed = self.spots(self.process({'mode': 'spot_rename', 'spot_name': 'HS', 'spot_new_name': 'HOT'}))
+        self.assertEqual(list(renamed), ['HOT'])
+        result = self.spots(self.process({'mode': 'spot_overprint', 'spot_name': 'HS', 'overprint_target': 'fill', 'overprint_value': True}))
+        self.assertEqual((result['HS']['overprint_fill'], result['HS']['overprint_stroke']), (1, 0))
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.process({'mode': 'spot_rename', 'spot_name': 'Missing', 'spot_new_name': 'X'})
+        self.assertEqual(error.exception.code, 422)
+
+    def test_spot_extract_keeps_only_spot_objects(self):
+        output = self.process({'mode': 'spot_extract', 'spot_name': 'HS', 'spot_placement': 'after'})
+        with fitz.open(stream=output, filetype='pdf') as doc:
+            self.assertEqual(len(doc), 2)
+            plate = doc[1].get_pixmap(alpha=False)
+            original = doc[0].get_pixmap(alpha=False)
+            y = plate.height - 25  # squares are drawn at y 10..40 in PDF space
+            self.assertNotEqual(original.pixel(25, y), (255, 255, 255))   # CMYK square on the original
+            self.assertEqual(plate.pixel(25, y), (255, 255, 255))         # removed from the plate
+            self.assertNotEqual(plate.pixel(105, y), (255, 255, 255))     # HS square kept
+        self.assertIn('HS', self.spots(output))
+
     def test_invalid_input(self):
         for fields, data in [({}, b'bad'), ({'page': '999'}, self.pdf)]:
             with self.assertRaises(urllib.error.HTTPError) as error:
