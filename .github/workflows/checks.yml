@@ -21,7 +21,7 @@ jobs:
           status=$?
           cat out.txt
           if [ $status -ne 0 ]; then
-            grep -E "^(FAIL|ERROR):|Error:|Exception|assert|line [0-9]+" out.txt | tail -n 25 | sed 's/^/::error::/'
+            grep -E "^(FAIL|ERROR):|Error:|Exception|assert|error|line [0-9]+" out.txt | tail -n 25 | sed 's/^/::error::/'
           fi
           exit $status
   container:

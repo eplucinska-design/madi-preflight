@@ -125,8 +125,11 @@ class SmokeTest(unittest.TestCase):
         pdf.save(buf)
         mm = 25.4 / 72
         def plates(x, y):
-            with self.post('/api/sample', {'page': 1, 'x': x * mm, 'y': y * mm}, buf.getvalue()) as response:
-                return json.load(response)['plates']
+            try:
+                with self.post('/api/sample', {'page': 1, 'x': x * mm, 'y': y * mm}, buf.getvalue()) as response:
+                    return json.load(response)['plates']
+            except urllib.error.HTTPError as error:
+                self.fail('Sampler error: ' + error.read().decode('utf-8', 'replace'))
         background, knockout, overprint = plates(100, 90), plates(40, 60), plates(150, 60)
         self.assertAlmostEqual(background['C'], 20, delta=1)
         self.assertEqual(background['HOT'], 0)
