@@ -70,4 +70,4 @@ Wdrozenia na zewnetrznym hostingu nie wykonano z tego repozytorium.
 
 Kod: AGPL-3.0. Udostepniajac aplikacje publicznie, udostepniasz tez kod zrodlowy
 (spelnione przez publiczne repozytorium). PyMuPDF: AGPL-3.0 lub licencja
-komercyjna; pikepdf: MPL-2.0; Pillow: HPND; Jost: SIL OFL 1.1; Lucide: ISC.
+komercyjna; pikepdf: MPL-2.0; Pillow: HPND; Lucide: ISC.

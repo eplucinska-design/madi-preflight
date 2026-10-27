@@ -6,7 +6,8 @@ Set-Location $PSScriptRoot
 # Library modules only: engine scripts (workflow, spots, sample) ship as data and run via --engine;
 # "workflow" would also clash with an unrelated PyInstaller contrib hook.
 $engine = 'server','inspector','imposer','cleanup_marks','colors','separations','foil_preflight' | ForEach-Object { "--hidden-import=$_" }
-python -m PyInstaller --noconfirm --clean --onedir --name "MADI Preflight" `
+# --windowed: no console window. Default manifest is asInvoker: no administrator prompt.
+python -m PyInstaller --noconfirm --clean --onedir --windowed --name "MADI Preflight" `
   --icon static\favicon.ico `
   --paths . --paths engine `
   --add-data "static;static" --add-data "engine;engine" `

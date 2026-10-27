@@ -169,9 +169,6 @@ class Handler(BaseHTTPRequestHandler):
                  '/colors.js': ('colors.js', 'text/javascript; charset=utf-8'),
                  '/measure.js': ('measure.js', 'text/javascript; charset=utf-8'),
                  '/clickup.css': ('clickup.css', 'text/css; charset=utf-8'),
-                 '/fonts/jost-latin-600-normal.woff2': ('fonts/jost-latin-600-normal.woff2', 'font/woff2'),
-                 '/fonts/jost-latin-ext-600-normal.woff2': ('fonts/jost-latin-ext-600-normal.woff2', 'font/woff2'),
-                 '/fonts/Jost-OFL.txt': ('fonts/Jost-OFL.txt', 'text/plain; charset=utf-8'),
                  '/vendor/lucide.min.js': ('vendor/lucide.min.js', 'text/javascript; charset=utf-8'),
                  '/vendor/lucide-LICENSE': ('vendor/lucide-LICENSE', 'text/plain; charset=utf-8')}
         path = urllib.parse.urlsplit(self.path).path

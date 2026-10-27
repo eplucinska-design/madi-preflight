@@ -15,7 +15,7 @@ body.shell .layout-toggle,body.shell .panel-resizer{display:none}
 .ribbon-tabs{display:flex;align-items:center;gap:2px;height:32px;padding:0 8px;border-bottom:1px solid var(--border)}
 .ribbon-tabs>button[role=tab]{height:32px;border-radius:0;border-bottom:2px solid transparent;color:var(--muted);padding:0 10px;font-size:12.5px}
 .ribbon-tabs>button[role=tab]:hover:not(:disabled){background:none;color:var(--text)}
-.ribbon-tabs>button[aria-selected=true]{background:none;color:var(--text);border-bottom-color:var(--accent);font-family:Jost,system-ui,sans-serif;font-weight:600}
+.ribbon-tabs>button[aria-selected=true]{background:none;color:var(--text);border-bottom-color:var(--accent);font-weight:600}
 .ribbon-tabs .spacer{flex:1}.ribbon-tabs .icon-button{width:28px;height:28px}.ribbon-tabs .icon-button.active{background:var(--selected);color:var(--accent)}
 .queue-chip{height:26px;font-size:12px;color:var(--muted)}
 .ribbon-groups{height:76px;padding:4px 8px;background:var(--panel2)}
