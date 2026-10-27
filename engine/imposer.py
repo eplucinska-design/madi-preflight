@@ -94,6 +94,8 @@ class ImposerSettings:
     mark_offset_mm: float = 2.0
     duplex_pairing: str = "sequential"
     bleed_mm: float = 3.0
+    registration_marks: bool = False
+    job_name: str = ""
 
 
 def _choice(args: SimpleNamespace, name: str, default: str, allowed: set[str]) -> str:
@@ -158,6 +160,8 @@ def settings_from_args(args: SimpleNamespace) -> ImposerSettings:
         mark_offset_mm=max(_float_arg(args, "imposer_mark_offset_mm", 2.0), 0.0),
         duplex_pairing=_choice(args, "imposer_duplex_pairing", "sequential", {"sequential", "alternate"}),
         bleed_mm=max(_float_arg(args, "imposer_bleed_mm", 3.0), 0.0),
+        registration_marks=_bool_arg(args, "imposer_registration_marks", False),
+        job_name=str(getattr(args, "imposer_job_name", "") or "")[:120],
     )
 
 
@@ -346,6 +350,40 @@ def _draw_crop_marks(page: fitz.Page, rect: fitz.Rect, settings: ImposerSettings
             page.draw_line(fitz.Point(*start), fitz.Point(*end), color=REGISTRATION, width=0.25)
 
 
+def _sheet_description(settings: ImposerSettings, side_label: str, sheet_number: int, sheet_total: int) -> str:
+    import datetime
+    parts = [settings.job_name] if settings.job_name else []
+    parts.append(f"arkusz {sheet_number}/{sheet_total}" if sheet_total else f"arkusz {sheet_number}")
+    parts.append(side_label)
+    parts.append(f"{settings.sheet_width_mm:g}x{settings.sheet_height_mm:g} mm")
+    parts.append(datetime.date.today().isoformat())
+    return "  |  ".join(parts)
+
+
+def _draw_registration_marks(sheet: fitz.Page, settings: ImposerSettings, mirror: bool) -> None:
+    """Registration targets (circle and cross, all separations) centred on each side, outside the block of positions."""
+    cells = [_slot_rect(settings, r, c, mirror) for r in range(settings.rows) for c in range(settings.columns)]
+    block = fitz.Rect(cells[0])
+    for cell in cells[1:]:
+        block |= cell
+    page = sheet.rect
+    radius, arm = mm_to_pt(2.5), mm_to_pt(4)
+    need = arm + mm_to_pt(1)
+    centres = []
+    if block.y0 - page.y0 >= 2 * need:
+        centres.append(fitz.Point(block.x0 + block.width / 2, block.y0 / 2))
+    if page.y1 - block.y1 >= 2 * need:
+        centres.append(fitz.Point(block.x0 + block.width / 2, (block.y1 + page.y1) / 2))
+    if block.x0 - page.x0 >= 2 * need:
+        centres.append(fitz.Point(block.x0 / 2, block.y0 + block.height / 2))
+    if page.x1 - block.x1 >= 2 * need:
+        centres.append(fitz.Point((block.x1 + page.x1) / 2, block.y0 + block.height / 2))
+    for c in centres:
+        sheet.draw_circle(c, radius, color=REGISTRATION, width=0.25)
+        sheet.draw_line(fitz.Point(c.x - arm, c.y), fitz.Point(c.x + arm, c.y), color=REGISTRATION, width=0.25)
+        sheet.draw_line(fitz.Point(c.x, c.y - arm), fitz.Point(c.x, c.y + arm), color=REGISTRATION, width=0.25)
+
+
 def _draw_blank(sheet: fitz.Page, rect: fitz.Rect) -> None:
     sheet.draw_rect(rect, color=(0.65, 0.65, 0.65), fill=(0.88, 1.0, 1.0), width=0.4)
     sheet.insert_textbox(rect, "Puste", fontsize=18, color=(0, 0, 0), align=fitz.TEXT_ALIGN_CENTER)
@@ -360,15 +398,18 @@ def _render_side(
     mirror: bool,
     sheet_number: int,
     preview: bool = False,
+    sheet_total: int = 0,
 ) -> None:
     sheet = out.new_page(width=mm_to_pt(settings.sheet_width_mm), height=mm_to_pt(settings.sheet_height_mm))
     if settings.draw_sheet_labels:
         sheet.insert_text(
             fitz.Point(mm_to_pt(settings.margin_left_mm), max(mm_to_pt(settings.margin_top_mm) - 8, 12)),
-            f"{side_label} - arkusz {sheet_number}",
-            fontsize=8,
-            color=(0.2, 0.2, 0.2),
+            _sheet_description(settings, side_label, sheet_number, sheet_total),
+            fontsize=7,
+            color=(0.0, 0.0, 0.0, 1.0),  # K100, not RGB
         )
+    if settings.registration_marks:
+        _draw_registration_marks(sheet, settings, mirror)
     for slot_index, source_page_index in enumerate(slots):
         row = slot_index // settings.columns
         col = slot_index % settings.columns
@@ -421,7 +462,8 @@ def render_sheets(src: fitz.Document, settings: ImposerSettings, out: fitz.Docum
             continue
         for side, slots in enumerate(sides):
             label = ("Tyl" if side else "Przod") if settings.duplex else "Arkusz"
-            _render_side(out, src, settings, slots, label, bool(side and settings.mirror_back), index + 1, preview=only_sheet is not None)
+            _render_side(out, src, settings, slots, label, bool(side and settings.mirror_back), index + 1,
+                         preview=only_sheet is not None, sheet_total=len(plan))
     return len(plan)
 
 

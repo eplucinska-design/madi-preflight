@@ -101,6 +101,9 @@ def run(step, src, out):
     if mode == 'cmyk_to_spot':
         return color_ops.cmyk_to_spot(src, out, str(step.get('source_cmyk', '')), str(step.get('spot_new_name', '')),
             float(str(step.get('cmyk_tolerance', 0.5)).replace(',', '.')), str(step.get('cmyk_target', 'both')))
+    if mode == 'stroke_width':
+        return color_ops.set_stroke_width(src, out, str(step.get('stroke_mode', 'min')),
+            float(str(step.get('stroke_width_mm', 0.1)).replace(',', '.')), str(step.get('spot_name', '')))
     if mode == 'white_overprint_fix':
         return color_ops.remove_white_overprint(src, out)
     if mode == 'spot_rename':

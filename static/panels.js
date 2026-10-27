@@ -10,7 +10,10 @@ const panelTitle=panel=>{const head=panel.querySelector(':scope>summary');return
 let draggedPanel=null;
 function makeSortable(panel,scope){const head=panel.querySelector(':scope>summary');if(!head||head.dataset.sortable)return;head.dataset.sortable='1';head.draggable=true;
 head.addEventListener('dragstart',event=>{if(panel.classList.contains('floating')){event.preventDefault();return;}draggedPanel=panel;panel.classList.add('dragging');event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',panelTitle(panel));});
-head.addEventListener('dragend',()=>{panel.classList.remove('dragging');document.querySelectorAll('.drop-before').forEach(el=>el.classList.remove('drop-before'));draggedPanel=null;});
+head.addEventListener('dragend',event=>{panel.classList.remove('dragging');document.querySelectorAll('.drop-before').forEach(el=>el.classList.remove('drop-before'));draggedPanel=null;
+// Dropped outside its dock: tear the panel off as a floating window at the drop point (as in Montax).
+const box=panel.parentElement?.getBoundingClientRect();const x=event.clientX,y=event.clientY;
+if(box&&(x||y)&&(x<box.left-24||x>box.right+24||y<box.top-24||y>box.bottom+24))floatPanel(panel,scope,{left:Math.max(0,Math.min(innerWidth-280,x-40)),top:Math.max(0,Math.min(innerHeight-120,y-12)),width:Math.max(panel.offsetWidth,260),height:Math.min(Math.max(panel.offsetHeight,140),innerHeight-140)});});
 panel.addEventListener('dragover',event=>{if(!draggedPanel||draggedPanel===panel||draggedPanel.parentElement!==panel.parentElement)return;event.preventDefault();panel.classList.add('drop-before');});
 panel.addEventListener('dragleave',()=>panel.classList.remove('drop-before'));
 panel.addEventListener('drop',event=>{if(!draggedPanel||draggedPanel.parentElement!==panel.parentElement)return;event.preventDefault();panel.classList.remove('drop-before');panel.before(draggedPanel);panelLayout.order[scope]=[...panel.parentElement.querySelectorAll(':scope>details')].map(panelTitle);savePanelLayout();});}

@@ -13,7 +13,7 @@ const ribbonTabs=[
 ['Strony',[['Strony',[['files','Układ stron','pages'],['file-minus','Usuń strony','delete_pages'],['file-plus','Puste strony','insert_blank']]],['Pliki',[['combine','Połącz PDF',()=>openMerge()],['split','Podziel PDF',()=>openSplit()]]]]],
 ['Montaż',[['Montaż',[['layout-grid','Siatka',()=>imposerWith({imposer_order:'repeat'})],['copy','Komplety',()=>imposerWith({imposer_order:'collate'})],['layers-3','Cut & stack',()=>imposerWith({imposer_order:'cut_stack'})]]],['Arkusz',[['flip-horizontal','Przód / tył',()=>{openTool('imposer');setField('imposer_duplex',!shellField('imposer_duplex')?.checked);}],['crop','Znaczniki',()=>{openTool('imposer');setField('imposer_crop_marks',!shellField('imposer_crop_marks')?.checked);}]]]]],
 ['Znaczniki',[['Znaczniki',[['eraser','Usuń znaczniki','cleanup'],['crop','Znaki cięcia (montaż)',()=>imposerWith({imposer_crop_marks:true})]]]]],
-['Wykrojnik',[['Wykrojnik',[['spline','Generuj','shape'],['scissors','Cięcie i bigowanie','dieline'],['scan-line','Format wg wykrojnika','format_dieline']]]]],
+['Wykrojnik',[['Wykrojnik',[['spline','Generuj','shape'],['scissors','Cięcie i bigowanie','dieline'],['scan-line','Format wg wykrojnika','format_dieline']]],['Obrysy',[['pen-line','Grubość obrysów','stroke_width']]]]],
 ['Kontrola',[['Kontrola',[['scan-search','Analizuj stronę',()=>{if(!needsDoc())$('inspect').click();}],['columns-2','Porównaj',()=>openCompare(),()=>!active()?.result]]]]],
 ['Eksport',[['Eksport',[['download','Pobierz PDF',()=>$('export').click(),()=>!active()?.result],['list-ordered','Kolejka',()=>setPanel('workflow')]]]]]];
 const ribbon=document.createElement('div');ribbon.className='ribbon';

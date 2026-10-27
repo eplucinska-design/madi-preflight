@@ -275,8 +275,11 @@ class Handler(BaseHTTPRequestHandler):
                 with tempfile.TemporaryDirectory(prefix='madi-web-') as work:
                     src = Path(work) / 'input.pdf'
                     src.write_bytes(pdf)
+                    min_line = float(fields.get('min_line_mm', '0.1'))
+                    if not 0 <= min_line <= 5:
+                        raise ValueError('Nieprawidlowy prog grubosci linii.')
                     completed = run_engine(engine_command('preflight_report.py', str(src), str(bleed), str(dpi_error),
-                        str(dpi_warning)), timeout=90)
+                        str(dpi_warning), str(min_line)), timeout=90)
                 if completed.returncode:
                     try:
                         error = json.loads(completed.stderr.decode('utf-8', 'replace').splitlines()[-1])['error']

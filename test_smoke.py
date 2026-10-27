@@ -275,6 +275,46 @@ class SmokeTest(unittest.TestCase):
         with fitz.open(stream=archive.read('test_03_str5.pdf'), filetype='pdf') as doc:
             self.assertIn('PAGE-5', doc[0].get_text())
 
+    def test_thin_lines_report_and_stroke_width_fix(self):
+        pdf = pikepdf.Pdf.new()
+        page = pdf.add_blank_page(page_size=(200, 200))
+        page.Resources = pikepdf.Dictionary(ColorSpace=pikepdf.Dictionary(CC=pikepdf.Array([
+            pikepdf.Name.Separation, pikepdf.Name('/CutContour'), pikepdf.Name.DeviceCMYK,
+            pikepdf.Dictionary(FunctionType=2, Domain=[0, 1], C0=[0, 0, 0, 0], C1=[0, 1, 0, 0], N=1)])))
+        # 1 pt line drawn at 10 % scale = 0.1 pt (0.035 mm); a 0-width hairline; a normal 1 pt line; a cut line.
+        page.Contents = pdf.make_stream(b'q 0.1 0 0 0.1 0 0 cm 0 0 0 1 K 1 w 100 100 m 1000 100 l S Q '
+                                        b'0 0 0 1 K 0 w 10 50 m 190 50 l S 1 w 10 80 m 190 80 l S '
+                                        b'q /CC CS 1 SCN 2 w 10 150 m 190 150 l S Q')
+        buf = io.BytesIO()
+        pdf.save(buf)
+        data = buf.getvalue()
+        with self.post('/api/preflight', {'min_line_mm': 0.1}, data) as response:
+            thin = [i for i in json.load(response)['issues'] if i['code'] == 'thin_lines']
+        self.assertEqual(len(thin), 1)
+        self.assertIn(': 2 ', thin[0]['message'])   # scaled line and hairline; the 1 pt and 2 pt lines pass
+        with self.post('/api/process', {'workflow': json.dumps([{'mode': 'stroke_width', 'stroke_mode': 'min', 'stroke_width_mm': 0.1}])}, data) as response:
+            fixed = response.read()
+        with self.post('/api/preflight', {'min_line_mm': 0.1}, fixed) as response:
+            self.assertNotIn('thin_lines', {i['code'] for i in json.load(response)['issues']})
+        with self.post('/api/process', {'workflow': json.dumps([{'mode': 'stroke_width', 'stroke_mode': 'spot', 'stroke_width_mm': 0.0882, 'spot_name': 'CutContour'}])}, data) as response:
+            cut = response.read()
+        with fitz.open(stream=cut, filetype='pdf') as doc:
+            widths = sorted(round(d['width'], 2) for d in doc[0].get_drawings() if d.get('width'))
+        self.assertIn(0.25, widths)   # cut line now 0.25 pt; other lines untouched
+        self.assertIn(1.0, widths)
+
+    def test_imposition_registration_marks_and_sheet_description(self):
+        step = {'mode': 'imposer', 'imposer_sheet': 'SRA3', 'imposer_rows': 1, 'imposer_columns': 1, 'imposer_repeat_count': 1,
+                'imposer_fit_mode': 'trim', 'imposer_registration_marks': True, 'imposer_draw_sheet_labels': True,
+                'imposer_job_name': 'zlecenie_42.pdf'}
+        with self.post('/api/process', {'workflow': json.dumps([step])}, self.numbered_pdf(1, trim=(5, 5, 95, 135))) as response:
+            with fitz.open(stream=response.read(), filetype='pdf') as doc:
+                text = doc[0].get_text()
+                circles = [d for d in doc[0].get_drawings() if any(item[0] == 'c' for item in d['items'])]
+        self.assertIn('zlecenie_42.pdf', text)
+        self.assertIn('arkusz 1/1', text)
+        self.assertEqual(len(circles), 4)   # one registration target per side
+
     def test_cleanup_handles_zero_size_paths(self):
         pdf = pikepdf.Pdf.new()
         page = pdf.add_blank_page(page_size=(200, 200))

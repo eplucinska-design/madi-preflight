@@ -6,6 +6,8 @@ Images and shadings are not recoloured; they are counted and reported when they 
 
 from __future__ import annotations
 
+import math
+
 import pikepdf
 from pikepdf import Name, Operator
 
@@ -115,6 +117,58 @@ def cmyk_to_spot(src, out, cmyk_text: str, spot: str, tolerance: float = 0.5, ta
             raise ValueError("Nie znaleziono obiektow w podanym kolorze CMYK (sprawdz tolerancje).")
         pdf.save(out)
     return count
+
+
+def set_stroke_width(src, out, mode: str, width_mm: float, spot: str = "") -> int:
+    """Stroke widths, measured on the page (CTM included):
+    'min'  - lines thinner than width_mm (and 0-width hairlines) get exactly width_mm;
+    'spot' - every stroke in the given spot gets width_mm (e.g. a cutting line)."""
+    from separations import _fix
+    from colors import effective_width
+    if mode not in ("min", "spot"):
+        raise ValueError("Nieprawidlowy tryb grubosci obrysow.")
+    target = float(width_mm) * MM_PT
+    if not 0 < target <= 100 * MM_PT:
+        raise ValueError("Grubosc obrysu: od 0,01 do 100 mm.")
+    spot = spot.strip()
+    if mode == "spot" and not spot:
+        raise ValueError("Podaj kolor spot obrysow.")
+    count = 0
+    with pikepdf.open(src) as pdf:
+        def handler(page, op, operands, state, resources):
+            nonlocal count
+            if op not in STROKE_OPS:
+                return None
+            a, b, c, d, _, _ = state.ctm
+            scale = abs(a * d - b * c) ** 0.5
+            if scale < 1e-9:
+                return None
+            if mode == "min" and effective_width(state) >= target - 1e-6:
+                return None
+            if mode == "spot" and state.stroke != (spot,):
+                return None
+            count += 1
+            # Round up so the result never falls below the requested width.
+            width = math.ceil(target / scale * 100000) / 100000
+            return [("__wrap__", [([], Operator("q")), ([width], Operator("w"))], [([], Operator("Q"))]),
+                    (operands, Operator(op))]
+
+        for page in pdf.pages:
+            from colors import Walker, State
+            walker = Walker(lambda op, operands, state, res: handler(0, op, operands, state, res))
+
+            def form(xobj, state, walker=walker):
+                xobj.write(pikepdf.unparse_content_stream(_fix(walker.walk(pikepdf.parse_content_stream(xobj), xobj.get("/Resources"), state))))
+            walker.form = form
+            result = walker.walk(pikepdf.parse_content_stream(page), page.obj.get("/Resources"), State())
+            page.obj.Contents = pdf.make_stream(pikepdf.unparse_content_stream(_fix(result)))
+        if not count:
+            raise ValueError("Brak obrysow do zmiany." if mode == "spot" else "Brak obrysow ciensze niz podana grubosc.")
+        pdf.save(out)
+    return count
+
+
+MM_PT = 72 / 25.4
 
 
 def remove_white_overprint(src, out) -> int:

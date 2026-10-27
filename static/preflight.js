@@ -1,8 +1,8 @@
 // Whole-file preflight report in the right dock: job thresholds, issues by level, click to jump to the page and area.
-const preflightDefaults={bleed:3,dpi_error:150,dpi_warning:250};
+const preflightDefaults={bleed:3,dpi_error:150,dpi_warning:250,min_line_mm:0.1};
 let preflightSettings={...preflightDefaults};try{Object.assign(preflightSettings,JSON.parse(localStorage.getItem('madi-preflight-settings')||'{}'));}catch{}
 const reportBox=document.createElement('div');reportBox.className='report-box';
-reportBox.innerHTML='<div class="report-settings"><label>Spad / mm<input type="number" name="bleed" min="0" max="50" step="0.5"></label><label>DPI błąd &lt;<input type="number" name="dpi_error" min="10" max="2400"></label><label>DPI ostrz. &lt;<input type="number" name="dpi_warning" min="10" max="2400"></label></div><button class="primary report-run" type="button">Sprawdź cały plik</button><div class="report-summary"></div><div class="report-list"></div>';
+reportBox.innerHTML='<div class="report-settings"><label>Spad / mm<input type="number" name="bleed" min="0" max="50" step="0.5"></label><label>DPI błąd &lt;<input type="number" name="dpi_error" min="10" max="2400"></label><label>DPI ostrz. &lt;<input type="number" name="dpi_warning" min="10" max="2400"></label><label>Linia min. / mm<input type="number" name="min_line_mm" min="0" max="5" step="0.01"></label></div><button class="primary report-run" type="button">Sprawdź cały plik</button><div class="report-summary"></div><div class="report-list"></div>';
 const reportPanel=dockPanel('Raport kontroli',reportBox);rightDock.insertBefore(reportPanel,rightDock.children[1]||null);
 for(const input of reportBox.querySelectorAll('.report-settings input')){input.value=preflightSettings[input.name];input.addEventListener('change',()=>{preflightSettings[input.name]=Number(input.value);try{localStorage.setItem('madi-preflight-settings',JSON.stringify(preflightSettings));}catch{}});}
 const reportHighlight=document.createElement('div');reportHighlight.className='report-highlight';reportHighlight.hidden=true;$('page-wrap').append(reportHighlight);

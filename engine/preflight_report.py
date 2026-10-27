@@ -19,7 +19,7 @@ import colors
 from colors import FILL_OPS, STROKE_OPS, TEXT_SHOW, State, Walker
 
 MM = 72 / 25.4
-LIMITS = ("Raport nie sprawdza grubosci linii, zgodnosci PDF/X ani pokrycia farba. "
+LIMITS = ("Raport nie sprawdza zgodnosci PDF/X ani pokrycia farba; grubosc linii liczona z CTM bez nierownomiernego skalowania. "
           "Wynik nie zastepuje kontroli produkcyjnej.")
 
 
@@ -33,17 +33,22 @@ def _white(kind: str, values: tuple) -> bool:
     return False
 
 
-def _content_checks(pdf: pikepdf.Pdf):
+def _content_checks(pdf: pikepdf.Pdf, min_line_pt: float = 0.0):
     """Per page: RGB painting count, white overprint count, transparency flags (content-stream level)."""
     result = []
     for page in pdf.pages:
-        stats = {"rgb": 0, "white_op": 0, "transparency": set()}
+        stats = {"rgb": 0, "white_op": 0, "transparency": set(), "thin": 0, "thinnest": None}
 
         def handler(op, operands, state: State, resources):
             fills = op in FILL_OPS or (op in TEXT_SHOW and state.render in (0, 2, 4, 6))
             strokes = op in STROKE_OPS or (op in TEXT_SHOW and state.render in (1, 2, 5, 6))
             if fills and state.fill_kind == "rgb" or strokes and state.stroke_kind == "rgb":
                 stats["rgb"] += 1
+            if op in STROKE_OPS and min_line_pt:
+                width = colors.effective_width(state)
+                if width < min_line_pt - 1e-6:
+                    stats["thin"] += 1
+                    stats["thinnest"] = width if stats["thinnest"] is None else min(stats["thinnest"], width)
             if fills and state.op_fill and _white(state.fill_kind, state.fill_vals) or \
                strokes and state.op_stroke and _white(state.stroke_kind, state.stroke_vals):
                 stats["white_op"] += 1
@@ -63,7 +68,7 @@ def _content_checks(pdf: pikepdf.Pdf):
     return result
 
 
-def report(data: bytes, bleed_mm: float = 3.0, dpi_error: int = 150, dpi_warning: int = 250) -> dict:
+def report(data: bytes, bleed_mm: float = 3.0, dpi_error: int = 150, dpi_warning: int = 250, min_line_mm: float = 0.1) -> dict:
     issues = []
 
     def add(level, page, code, message, bbox=None):
@@ -71,7 +76,7 @@ def report(data: bytes, bleed_mm: float = 3.0, dpi_error: int = 150, dpi_warning
                        "bbox_mm": [round(v / MM, 2) for v in bbox] if bbox else None})
 
     with pikepdf.open(io.BytesIO(data)) as pdf:
-        content = _content_checks(pdf)
+        content = _content_checks(pdf, min_line_mm * MM)
         usage = colors.spot_usage(pdf)
     with fitz.open(stream=data, filetype="pdf") as doc:
         if doc.needs_pass:
@@ -123,6 +128,10 @@ def report(data: bytes, bleed_mm: float = 3.0, dpi_error: int = 150, dpi_warning
                 add("warning", number, "vector_rgb", f"Obiekty wektorowe lub tekst w RGB: {stats['rgb']}.")
             if stats["white_op"]:
                 add("error", number, "white_overprint", f"Biale obiekty z nadrukiem: {stats['white_op']} (znikna w druku).")
+            if stats["thin"]:
+                thinnest = stats["thinnest"] / MM
+                detail = "linie 0 (najcienszy mozliwy obrys)" if thinnest < 0.001 else f"najcienszy {thinnest:.3f} mm"
+                add("warning", number, "thin_lines", f"Obrysy ciensze niz {min_line_mm:g} mm: {stats['thin']} ({detail}).")
             if stats["transparency"]:
                 add("info", number, "transparency", "Przezroczystosc: " + ", ".join(sorted(stats["transparency"])) + ".")
         spots = sorted(name for name, item in usage.items() if name not in colors.NOT_SPOT and (item.fill or item.stroke or item.images))
@@ -142,7 +151,7 @@ def report(data: bytes, bleed_mm: float = 3.0, dpi_error: int = 150, dpi_warning
     issues.sort(key=lambda item: (order[item["level"]], item["page"] or 0))
     counts = {level: sum(1 for item in issues if item["level"] == level) for level in order}
     return {"pages": pages, "issues": issues, "counts": counts,
-            "settings": {"bleed_mm": bleed_mm, "dpi_error": dpi_error, "dpi_warning": dpi_warning},
+            "settings": {"bleed_mm": bleed_mm, "dpi_error": dpi_error, "dpi_warning": dpi_warning, "min_line_mm": min_line_mm},
             "limitations": LIMITS}
 
 
@@ -151,7 +160,8 @@ if __name__ == "__main__":
     fitz.TOOLS.mupdf_display_warnings(False)
     try:
         with open(sys.argv[1], "rb") as handle:
-            result = report(handle.read(), float(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]))
+            result = report(handle.read(), float(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]),
+                            float(sys.argv[5]) if len(sys.argv) > 5 else 0.1)
         print(json.dumps(result, ensure_ascii=True))
     except Exception as error:
         print(json.dumps({"error": str(error)[:300]}, ensure_ascii=True), file=sys.stderr)

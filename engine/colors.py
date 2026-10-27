@@ -94,6 +94,22 @@ class State:
     stroke_vals: tuple = (0.0,)
     fill_raw: tuple = ()
     stroke_raw: tuple = ()
+    # Current transformation matrix and line width (user space), for effective stroke widths.
+    ctm: tuple = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    line_width: float = 1.0
+
+
+def _multiply(m, n) -> tuple:
+    """PDF matrix product m x n (apply m, then n)."""
+    a, b, c, d, e, f = m
+    A, B, C, D, E, F = n
+    return (a * A + b * C, a * B + b * D, c * A + d * C, c * B + d * D, e * A + f * C + E, e * B + f * D + F)
+
+
+def effective_width(state) -> float:
+    """Stroke width in points on the page (geometric mean scale of the CTM); 0 means the thinnest line."""
+    a, b, c, d, _, _ = state.ctm
+    return state.line_width * abs(a * d - b * c) ** 0.5
 
 
 @dataclass
@@ -166,12 +182,17 @@ class Walker:
                 state = _gs_overprint(resources, operands[0], state)
             elif op == "Tr":
                 state = replace(state, render=int(operands[0]))
+            elif op == "cm" and len(operands) == 6:
+                state = replace(state, ctm=_multiply(tuple(float(v) for v in operands), state.ctm))
+            elif op == "w" and operands:
+                state = replace(state, line_width=float(operands[0]))
             result = self.handler(op, list(operands), state, resources)
             if op == "Do" and self.visit_forms and resources is not None:
                 xobj = resources.get("/XObject", pikepdf.Dictionary()).get(operands[0])
                 if xobj is not None and xobj.get("/Subtype") == "/Form" and xobj.objgen not in self.seen:
                     self.seen.add(xobj.objgen)
-                    self.form(xobj, state)
+                    matrix = tuple(float(v) for v in xobj.get("/Matrix", [1, 0, 0, 1, 0, 0]))
+                    self.form(xobj, replace(state, ctm=_multiply(matrix, state.ctm)))
             out.append(result if result is not None else [(operands, operator)])
         return [item for group in out for item in group]
 
