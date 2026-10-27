@@ -95,7 +95,7 @@ class Handler(BaseHTTPRequestHandler):
             parsed_origin = urllib.parse.urlsplit(origin or '')
             if origin and (parsed_origin.scheme not in {'http', 'https'} or parsed_origin.netloc != self.headers.get('Host', '')):
                 return self.reply(403, {'error': 'Niedozwolone zrodlo zapytania.'})
-            if self.path not in {'/api/analyze', '/api/process', '/api/inspect', '/api/spots'}:
+            if self.path not in {'/api/analyze', '/api/process', '/api/inspect', '/api/spots', '/api/sample'}:
                 return self.reply(404, {'error': 'Nie znaleziono.'})
             size = int(self.headers.get('Content-Length', 0))
             if not 0 < size <= MAX_UPLOAD:
@@ -124,6 +124,22 @@ class Handler(BaseHTTPRequestHandler):
                         capture_output=True, timeout=60)
                 if completed.returncode:
                     raise ValueError('Nie udalo sie odczytac kolorow spot.')
+                return self.reply(200, json.loads(completed.stdout))
+            if self.path == '/api/sample':
+                numbers = [float(fields.get(key, 'nan')) for key in ('x', 'y')]
+                if not all(0 <= value <= 20000 for value in numbers):
+                    raise ValueError('Nieprawidlowy punkt probkowania.')
+                with tempfile.TemporaryDirectory(prefix='madi-web-') as work:
+                    src = Path(work) / 'input.pdf'
+                    src.write_bytes(pdf)
+                    completed = subprocess.run([sys.executable, str(ROOT / 'engine' / 'sample.py'), str(src),
+                        str(int(fields.get('page', '1'))), str(numbers[0]), str(numbers[1])], capture_output=True, timeout=60)
+                if completed.returncode:
+                    try:
+                        error = json.loads(completed.stderr.decode('utf-8', 'replace').splitlines()[-1])['error']
+                    except (ValueError, KeyError, IndexError):
+                        error = 'Nie udalo sie odczytac separacji.'
+                    raise ValueError(error)
                 return self.reply(200, json.loads(completed.stdout))
             if self.path in {'/api/analyze', '/api/inspect'}:
                 with PDF_LOCK, fitz.open(stream=pdf, filetype='pdf') as doc:

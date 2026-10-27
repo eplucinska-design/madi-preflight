@@ -111,6 +111,29 @@ class SmokeTest(unittest.TestCase):
             self.assertNotEqual(plate.pixel(105, y), (255, 255, 255))     # HS square kept
         self.assertIn('HS', self.spots(output))
 
+    def test_separation_sampler_simulates_knockout_and_overprint(self):
+        pdf = pikepdf.Pdf.new()
+        page = pdf.add_blank_page(page_size=(200, 100))
+        page.Resources = pikepdf.Dictionary(ColorSpace=pikepdf.Dictionary(HS=pikepdf.Array([
+            pikepdf.Name.Separation, pikepdf.Name('/HOT'), pikepdf.Name.DeviceCMYK,
+            pikepdf.Dictionary(FunctionType=2, Domain=[0, 1], C0=[0, 0, 0, 0], C1=[0, .3, 1, 0], N=1)])),
+            ExtGState=pikepdf.Dictionary(OP=pikepdf.Dictionary(op=True, OP=True, OPM=1)))
+        page.Contents = pdf.make_stream(b'0.2 0.4 0 0.1 k 0 0 200 100 re f q /HS cs 0.5 scn 10 10 60 60 re f Q '
+                                        b'q /OP gs /HS cs 1 scn 120 10 60 60 re f Q')
+        buf = io.BytesIO()
+        pdf.save(buf)
+        mm = 25.4 / 72
+        def plates(x, y):
+            with self.post('/api/sample', {'page': 1, 'x': x * mm, 'y': y * mm}, buf.getvalue()) as response:
+                return json.load(response)['plates']
+        background, knockout, overprint = plates(100, 90), plates(40, 60), plates(150, 60)
+        self.assertAlmostEqual(background['C'], 20, delta=1)
+        self.assertEqual(background['HOT'], 0)
+        self.assertEqual((knockout['C'], knockout['M']), (0, 0))
+        self.assertAlmostEqual(knockout['HOT'], 50, delta=1)
+        self.assertAlmostEqual(overprint['M'], 40, delta=1)
+        self.assertAlmostEqual(overprint['HOT'], 100, delta=1)
+
     def test_invalid_input(self):
         for fields, data in [({}, b'bad'), ({'page': '999'}, self.pdf)]:
             with self.assertRaises(urllib.error.HTTPError) as error:

@@ -45,6 +45,38 @@ def _resolve_space(resources, value) -> list[str]:
     return _names(value)
 
 
+def _numbers(operands) -> tuple:
+    values = []
+    for value in operands:
+        if isinstance(value, Name):
+            continue
+        try:
+            values.append(float(value))
+        except (TypeError, ValueError):
+            pass
+    return tuple(values)
+
+
+def _kind(resources, value) -> str:
+    """Colour space family of a cs/CS operand."""
+    names = {"/DeviceCMYK": "cmyk", "/DeviceRGB": "rgb", "/DeviceGray": "gray", "/Pattern": "other"}
+    if str(value) in names:
+        return names[str(value)]
+    space = None
+    spaces = resources.get("/ColorSpace") if resources is not None else None
+    if spaces is not None and value in spaces:
+        space = spaces[value]
+    if space is None:
+        return "other"
+    if _names(space):
+        return "spot"
+    if isinstance(space, Name):
+        return names.get(str(space), "other")
+    if isinstance(space, pikepdf.Array) and str(space[0]) == "/ICCBased":
+        return {4: "cmyk", 3: "rgb", 1: "gray"}.get(int(space[1].get("/N", 0)), "other")
+    return "other"
+
+
 @dataclass
 class State:
     fill: tuple[str, ...] = ()
@@ -52,6 +84,14 @@ class State:
     op_fill: bool = False
     op_stroke: bool = False
     render: int = 0
+    # Colour values and kind ("cmyk", "rgb", "gray", "spot", "other") plus the raw
+    # operators that set them, used by the separation sampler to restore colours.
+    fill_kind: str = "gray"
+    stroke_kind: str = "gray"
+    fill_vals: tuple = (0.0,)
+    stroke_vals: tuple = (0.0,)
+    fill_raw: tuple = ()
+    stroke_raw: tuple = ()
 
 
 @dataclass
@@ -105,13 +145,21 @@ class Walker:
             elif op == "Q" and stack:
                 state = stack.pop()
             elif op == "cs":
-                state = replace(state, fill=tuple(_resolve_space(resources, operands[0])))
+                state = replace(state, fill=tuple(_resolve_space(resources, operands[0])), fill_kind=_kind(resources, operands[0]),
+                                fill_raw=((list(operands), operator),), fill_vals=(1.0,))
             elif op == "CS":
-                state = replace(state, stroke=tuple(_resolve_space(resources, operands[0])))
+                state = replace(state, stroke=tuple(_resolve_space(resources, operands[0])), stroke_kind=_kind(resources, operands[0]),
+                                stroke_raw=((list(operands), operator),), stroke_vals=(1.0,))
+            elif op in ("sc", "scn"):
+                state = replace(state, fill_vals=_numbers(operands), fill_raw=state.fill_raw[:1] + ((list(operands), operator),))
+            elif op in ("SC", "SCN"):
+                state = replace(state, stroke_vals=_numbers(operands), stroke_raw=state.stroke_raw[:1] + ((list(operands), operator),))
             elif op in ("g", "rg", "k"):
-                state = replace(state, fill=())
+                state = replace(state, fill=(), fill_kind={"g": "gray", "rg": "rgb", "k": "cmyk"}[op],
+                                fill_vals=_numbers(operands), fill_raw=((list(operands), operator),))
             elif op in ("G", "RG", "K"):
-                state = replace(state, stroke=())
+                state = replace(state, stroke=(), stroke_kind={"G": "gray", "RG": "rgb", "K": "cmyk"}[op],
+                                stroke_vals=_numbers(operands), stroke_raw=((list(operands), operator),))
             elif op == "gs":
                 state = _gs_overprint(resources, operands[0], state)
             elif op == "Tr":
@@ -310,7 +358,7 @@ def _fix_paths(instructions):
     """Move overprint gs markers in front of their path construction (gs is not allowed inside a path)."""
     result, path_start, back = [], None, None
     for item in instructions:
-        if item[0] == "__path__":
+        if isinstance(item[0], str):
             _, on, back = item
             result.insert(path_start if path_start is not None else len(result), ([on], Operator("gs")))
             continue
