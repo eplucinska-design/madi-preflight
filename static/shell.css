@@ -12,14 +12,14 @@ body.shell.dock-left-off.dock-right-off .desk{grid-template-columns:0 minmax(0,1
 body.shell .layout-toggle,body.shell .panel-resizer{display:none}
 /* Wstążka */
 .ribbon{background:var(--panel);border-bottom:1px solid var(--border)}
-.ribbon-tabs{display:flex;align-items:center;gap:2px;height:28px;padding:0 8px;border-bottom:1px solid var(--border)}
+.ribbon-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:2px;min-height:28px;padding:0 8px;border-bottom:1px solid var(--border)}
 .ribbon-tabs>button[role=tab]{height:28px;border-radius:0;border-bottom:2px solid transparent;color:var(--muted);padding:0 10px;font-size:12.5px}
 .ribbon-tabs>button[role=tab]:hover:not(:disabled){background:none;color:var(--text)}
 .ribbon-tabs>button[aria-selected=true]{background:none;color:var(--text);border-bottom-color:var(--accent);font-weight:600}
 .ribbon-tabs .spacer{flex:1}.ribbon-tabs .icon-button{width:28px;height:28px}.ribbon-tabs .icon-button.active{background:var(--selected);color:var(--accent)}
 .queue-chip{height:26px;font-size:12px;color:var(--muted)}
-.ribbon-groups{height:60px;padding:4px 8px;background:var(--panel2)}
-.ribbon-pane{display:flex;height:100%}
+.ribbon-groups{height:auto;min-height:60px;padding:4px 8px;background:var(--panel2)}
+.ribbon-pane{display:flex;flex-wrap:wrap;row-gap:4px}
 .ribbon-group{display:flex;flex-direction:column;align-items:center;padding:0 8px;border-right:1px solid var(--border)}
 .ribbon-group:last-child{border-right:0}
 .ribbon-buttons{display:flex;gap:2px;flex:1}
@@ -28,7 +28,7 @@ body.shell .layout-toggle,body.shell .panel-resizer{display:none}
 .ribbon-button.active{background:var(--selected);color:var(--accent)}
 .ribbon-button:disabled svg{color:var(--muted)}
 .ribbon-pane-label{display:none}
-.ribbon.expanded .ribbon-groups{height:auto;max-height:46vh;overflow:auto;display:flex;flex-wrap:wrap;gap:6px 0}
+.ribbon.expanded .ribbon-groups{height:auto;max-height:none;overflow:visible;display:flex;flex-wrap:wrap;gap:6px 0}
 .ribbon.expanded .ribbon-pane{height:58px;border-right:1px solid var(--border-strong,var(--border));padding-right:4px}
 .ribbon.expanded .ribbon-pane-label{display:block;writing-mode:vertical-rl;transform:rotate(180deg);font-size:10.5px;color:var(--accent);font-weight:600;padding:0 2px;text-align:center}
 .ribbon.expanded .ribbon-tabs>button[role=tab]{display:none}
@@ -92,7 +92,7 @@ details>summary[draggable=true]{cursor:grab}
 details.dragging{opacity:.4}details.drop-before{box-shadow:inset 0 3px 0 var(--accent)}
 .dock-panel>summary,#fields .field-group>summary{display:flex;align-items:center}
 .ribbon-button[draggable=true],.ribbon-group[draggable=true]{cursor:grab}.ribbon-button.dragging,.ribbon-group.dragging{opacity:.4}
-.ribbon.expanded .ribbon-groups,.ribbon-groups{resize:vertical;overflow:auto;min-height:60px}
+.ribbon-groups{overflow:visible}
 .merge-list{list-style:none;padding:0;margin:8px 0;display:grid;gap:4px}.merge-list li{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;padding:4px 6px;background:var(--panel2);border-radius:var(--radius);font-size:12px}.merge-list button{min-height:22px;width:26px;padding:0;border:1px solid var(--border)}
 .split-form{display:grid;gap:8px;font-size:12px}.split-form label{display:flex;align-items:center;gap:6px}.split-form input[type=text],.split-form input[type=number]{height:26px}
 /* Raport kontroli */
