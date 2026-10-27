@@ -25,6 +25,39 @@ def run_engine_script():
     runpy.run_path(str(script), run_name='__main__')
 
 
+def relaunch_locally_if_on_network():
+    """When started from a network drive, run a local copy so the shared folder is never held open.
+
+    The copy lives in %LOCALAPPDATA%\\MADI Preflight\\app\\<build id>; a new build on the share gets a new
+    folder automatically, older local copies are removed. Returns True if a local copy was started.
+    """
+    import ctypes
+    import os
+    import shutil
+    import subprocess
+    if not getattr(sys, 'frozen', False):
+        return False
+    exe = Path(sys.executable).resolve()
+    root = exe.anchor
+    remote = str(exe).startswith('\\\\') or ctypes.windll.kernel32.GetDriveTypeW(root) == 4  # DRIVE_REMOTE
+    if not remote:
+        return False
+    build = (BASE / 'build_id.txt').read_text(encoding='utf-8').strip() if (BASE / 'build_id.txt').exists() else 'dev'
+    base = Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'MADI Preflight' / 'app'
+    target = base / build
+    if not (target / exe.name).exists():
+        staging = base / (build + '.tmp')
+        shutil.rmtree(staging, ignore_errors=True)
+        shutil.copytree(exe.parent, staging)
+        shutil.rmtree(target, ignore_errors=True)
+        staging.rename(target)
+    for old in base.iterdir():
+        if old.is_dir() and old.name != build:
+            shutil.rmtree(old, ignore_errors=True)  # skipped silently while an old copy is still running
+    subprocess.Popen([str(target / exe.name), *sys.argv[1:]], cwd=str(target), close_fds=True)
+    return True
+
+
 def free_port():
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
@@ -45,7 +78,12 @@ def main():
         import webview
         webview.settings['ALLOW_DOWNLOADS'] = True
         webview.create_window('MADI Preflight', url, width=1440, height=900, min_size=(1000, 650))
-        webview.start(private_mode=False)
+        # WebView2 profile per user on the local disk: never next to the EXE on a shared network drive,
+        # where several users (or a second instance) would lock the same profile files.
+        import os
+        storage = Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'MADI Preflight' / 'webview'
+        storage.mkdir(parents=True, exist_ok=True)
+        webview.start(private_mode=False, storage_path=str(storage))
     except Exception:
         import webbrowser
         import time
@@ -58,5 +96,5 @@ def main():
 if __name__ == '__main__':
     if len(sys.argv) > 2 and sys.argv[1] == '--engine':
         run_engine_script()
-    else:
+    elif not relaunch_locally_if_on_network():
         main()
