@@ -58,6 +58,13 @@ body.shell .page-item{height:auto;padding:4px}body.shell .page-item img,body.she
 .menu-item{display:grid;grid-template-columns:16px 1fr auto;gap:6px;width:100%;justify-content:stretch;text-align:left;min-height:26px;padding:3px 8px;font-size:12.5px}
 .menu-check{color:var(--accent);font-weight:600}.menu-key{color:var(--muted);font-size:11px}
 body.shell .menu-actions{flex:0}
+/* Raport kontroli */
+.report-box{padding:6px 10px 10px;display:grid;gap:6px}.report-settings{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.report-settings label{font-size:10.5px;color:var(--muted);display:grid;gap:2px}.report-settings input{height:24px}
+.report-run{min-height:28px}.report-summary{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px}.report-source{color:var(--muted);margin-right:auto}
+.report-chip{border-radius:999px;padding:1px 7px;font-size:10.5px;font-weight:600}.report-chip.error,.report-row.error .report-dot{background:color-mix(in srgb,var(--err) 18%,transparent);color:var(--err)}.report-chip.warning,.report-row.warning .report-dot{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)}.report-chip.info,.report-row.info .report-dot{background:var(--accent-soft);color:var(--accent)}
+.report-list{display:grid;gap:2px;max-height:38vh;overflow:auto}.report-row{display:grid;grid-template-columns:8px 1fr auto;gap:7px;align-items:start;text-align:left;justify-content:stretch;white-space:normal;padding:5px 6px;font-size:11.5px;line-height:1.35;min-height:0}
+.report-dot{width:8px;height:8px;border-radius:50%;margin-top:4px}.report-row.error .report-dot{background:var(--err)}.report-row.warning .report-dot{background:var(--warn)}.report-row.info .report-dot{background:var(--accent)}.report-page{color:var(--muted);font-size:10.5px;white-space:nowrap}
+.report-highlight{position:absolute;border:2px solid var(--err);background:color-mix(in srgb,var(--err) 12%,transparent);pointer-events:none;z-index:4;box-shadow:0 0 0 2px #fff8}
 /* Próbnik / podgląd wyjściowy */
 .page-wrap.sampling{cursor:crosshair}.sample-mark{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border:2px solid #ff3d7f;border-radius:50%;box-shadow:0 0 0 1px #fff;pointer-events:none;z-index:4}
 .sample-box{padding:6px 10px 8px;display:grid;gap:3px}.sample-head{font-size:11.5px;font-weight:600;margin-bottom:3px;font-variant-numeric:tabular-nums}
