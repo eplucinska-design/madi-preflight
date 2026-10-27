@@ -78,7 +78,13 @@ Pillow: licencja HPND. Zaleznosci zachowuja swoje licencje.
 Ikony Lucide sa dolaczone lokalnie na licencji ISC (static/vendor/lucide-LICENSE).
 
 Impozycja i czyszczenie znacznikow korzystaja z modulow aplikacji desktopowej.
-To impozycja siatkowa, nie skladanie ksiazek. Czyszczenie moze usunac grafike
+To impozycja siatkowa (powtarzanie stron, komplety) i cut&stack, nie skladki
+ani skladanie ksiazek. Druk dwustronny: domyslnie kolejne strony (przod 1,2 /
+tyl 3,4) jak dotychczas, opcjonalnie naprzemiennie (przod 1 / tyl 2). Wlasciwy
+wariant zalezy od wzorca zlecenia i sposobu odwracania arkusza; zgodnosci z
+zatwierdzonym wzorcem montazu nie potwierdzono. Znaczniki ciecia sa liczone
+od TrimBox strony zrodlowej (CMYK 100/100/100/100), dla stron z /Rotate nie
+sprawdzano. Podglad i eksport korzystaja z tej samej funkcji render_sheets. Czyszczenie moze usunac grafike
 przypominajaca znaczniki: nalezy sprawdzic podglad wyniku.
 
 ## Granice inspekcji i dalsze DTP
