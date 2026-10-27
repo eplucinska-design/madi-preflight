@@ -196,6 +196,28 @@ class SmokeTest(unittest.TestCase):
                 self.assertAlmostEqual(row[0], 28, delta=1)    # 3 mm bleed outside the trim
                 self.assertAlmostEqual(row[-1], 244, delta=1)  # inner bleed limited to half the 6 mm gap
 
+    def test_set_page_boxes_in_displayed_orientation(self):
+        source = fitz.open()
+        source.new_page(width=300, height=200)
+        rotated = source.new_page(width=300, height=200)
+        rotated.set_rotation(90)
+        payload = source.tobytes()
+        source.close()
+        step = {'mode': 'boxes', 'boxes_target': 'trim', 'boxes_reference': 'media', 'boxes_top_mm': 5,
+                'boxes_bottom_mm': 0, 'boxes_left_mm': 0, 'boxes_right_mm': 0, 'boxes_pages': ''}
+        with self.post('/api/process', {'workflow': json.dumps([step])}, payload) as response:
+            result = response.read()
+        for page in (1, 2):
+            with self.post('/api/analyze', {'page': page}, result) as response:
+                boxes = json.load(response)['boxes']
+            self.assertAlmostEqual(boxes['trimbox'][1], 5, places=2)          # top edge as displayed
+            self.assertAlmostEqual(boxes['trimbox'][0], 0, places=2)
+            self.assertAlmostEqual(boxes['trimbox'][3], boxes['mediabox'][3], places=2)
+        with fitz.open(stream=result, filetype='pdf') as doc:
+            self.assertEqual(doc[0].get_contents(), fitz.open(stream=payload, filetype='pdf')[0].get_contents())
+        with self.assertRaises(urllib.error.HTTPError):
+            self.post('/api/process', {'workflow': json.dumps([{**step, 'boxes_top_mm': 400}])}, payload)
+
     def test_cleanup_handles_zero_size_paths(self):
         pdf = pikepdf.Pdf.new()
         page = pdf.add_blank_page(page_size=(200, 200))

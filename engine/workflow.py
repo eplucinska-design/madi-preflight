@@ -11,6 +11,7 @@ import foil_preflight as engine
 from imposer import process_imposer_pdf, settings_from_args, render_sheets
 from cleanup_marks import process_cleanup_marks_pdf
 import colors
+import page_boxes
 
 
 def truth(value):
@@ -78,6 +79,13 @@ def run(step, src, out):
     if mode == 'cleanup':
         return process_cleanup_marks_pdf(SimpleNamespace(input=src, output=out, **{
             key: value for key, value in step.items() if key.startswith('cleanup_')}))
+    if mode == 'boxes':
+        number = lambda key: float(str(step.get(key, 0) or 0).replace(',', '.'))
+        values = [number(key) for key in ('boxes_top_mm', 'boxes_bottom_mm', 'boxes_left_mm', 'boxes_right_mm')]
+        if not all(math.isfinite(v) and -500 <= v <= 500 for v in values):
+            raise ValueError('Nieprawidlowe marginesy pola strony.')
+        return page_boxes.set_box(src, out, str(step.get('boxes_target', 'trim')), str(step.get('boxes_reference', 'media')),
+            *values, pages=str(step.get('boxes_pages', '')))
     if mode == 'spot_rename':
         return colors.rename_spot(src, out, str(step.get('spot_name', '')), str(step.get('spot_new_name', '')))
     if mode == 'spot_extract':

@@ -13,7 +13,11 @@ spot_overprint:['Włącz lub wyłącz nadruk dla obiektów w kolorze spot.','nad
 shape:['Wygeneruj wykrojnik: prostokąt, koło lub obrys nieregularny.','wykrojnik cutcontour obrys kształt'],
 dieline:['Wydziel cięcie, bigowanie i perforację na osobne linie technologiczne.','linie cięcie bigowanie perforacja'],
 imposer:['Rozmieść użytki na arkuszu: przód/tył, cut&stack, znaczniki.','impozycja montaż arkusz użytki'],
-pages:['Wybierz, ułóż, powiel i obróć strony.','strony kolejność obrót duplikuj zakres']};
+pages:['Wybierz, ułóż, powiel i obróć strony.','strony kolejność obrót duplikuj zakres'],
+boxes:['Ustaw TrimBox, BleedBox, CropBox, ArtBox lub MediaBox marginesami od wybranego pola. Treść strony się nie zmienia; marginesy ujemne powiększają pole.','pola strony trimbox bleedbox cropbox mediabox format netto kadrowanie'],
+spot_rename:['Zmień nazwę spotu lub zamień go na istniejący spot.','spot nazwa zamiana pantone'],
+spot_extract:['Wydziel obiekty w kolorze spot na osobne strony.','spot separacja płyta wydziel'],
+spot_overprint:['Włącz lub wyłącz nadruk dla obiektów w kolorze spot.','nadruk overprint spot']};
 for(const button of library.querySelectorAll('button[data-tool]')){const info=toolInfo[button.dataset.tool];if(info)button.title=info[0];}
 // Tool search above the library.
 const toolSearch=document.createElement('input');toolSearch.type='search';toolSearch.className='tool-search';toolSearch.placeholder='Szukaj narzędzia…  (Ctrl K)';toolSearch.setAttribute('aria-label','Szukaj narzędzia');
