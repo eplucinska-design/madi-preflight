@@ -315,6 +315,41 @@ class SmokeTest(unittest.TestCase):
         self.assertIn('arkusz 1/1', text)
         self.assertEqual(len(circles), 4)   # one registration target per side
 
+    def test_booklet_order_spine_creep_and_check(self):
+        mm = 72 / 25.4
+        source = fitz.open()
+        for number in range(1, 7):   # 6 pages A5 trim 148x210 + 3 mm bleed
+            page = source.new_page(width=154 * mm, height=216 * mm)
+            page.set_trimbox(fitz.Rect(3 * mm, 3 * mm, 151 * mm, 213 * mm))
+            page.draw_rect(page.rect, color=None, fill=(0, 0, 1))
+            page.insert_text((20 * mm, 100 * mm), f'P{number}', fontsize=30)
+        payload = source.tobytes()
+        source.close()
+        step = {'mode': 'imposer', 'imposer_order': 'booklet', 'imposer_sheet': 'SRA3', 'imposer_rows': 1, 'imposer_columns': 1,
+                'imposer_repeat_count': 1, 'imposer_creep_mm': 1, 'imposer_bleed_mm': 3, 'imposer_draw_sheet_labels': False}
+        with self.post('/api/process', {'workflow': json.dumps([step])}, payload) as response:
+            data = response.read()
+        with fitz.open(stream=data, filetype='pdf') as doc:
+            self.assertEqual(len(doc), 4)    # 8 pages -> 2 sheets x 2 sides
+            sides = [sorted((w[0] / mm, w[4]) for w in page.get_text('words')) for page in doc]
+            names = [[name for _, name in side] for side in sides]
+            self.assertEqual(names, [['P1'], ['P2'], ['P6', 'P3'], ['P4', 'P5']])   # 8 and 7 are blank
+            # SRA3 is 320 wide: spine at 160, left page trim 12..160, right 160..308.
+            self.assertAlmostEqual(sides[0][0][0], 160 + 17, delta=0.5)        # P1 right of the spine, no creep
+            self.assertAlmostEqual(sides[2][1][0], 160 + 17 - 1, delta=0.5)    # P3 on sheet 2 moved 1 mm to the spine
+            self.assertAlmostEqual(sides[2][0][0], 12 + 17 + 1, delta=0.5)     # P6 moved 1 mm to the spine too
+            ink = doc[0].get_pixmap(matrix=fitz.Matrix(1 / mm, 1 / mm), alpha=False)
+            row = [x for x in range(ink.width) if ink.pixel(x, 160) != (255, 255, 255)]
+            self.assertAlmostEqual(row[0], 160, delta=1)     # no bleed over the spine
+            self.assertAlmostEqual(row[-1], 311, delta=1)    # 3 mm outer bleed
+        with self.post('/api/imposecheck', {'step': json.dumps(step)}, payload) as response:
+            check = json.load(response)
+        self.assertEqual(check['sheets'], 2)
+        self.assertTrue(any('dodano 2 puste' in i['message'] for i in check['issues'] if i['level'] == 'info'))
+        small = {**step, 'imposer_order': 'repeat', 'imposer_sheet': 'A4', 'imposer_rows': 2, 'imposer_columns': 2, 'imposer_fit_mode': 'trim'}
+        with self.post('/api/imposecheck', {'step': json.dumps(small)}, payload) as response:
+            self.assertEqual(json.load(response)['issues'][0]['level'], 'error')
+
     def test_cleanup_handles_zero_size_paths(self):
         pdf = pikepdf.Pdf.new()
         page = pdf.add_blank_page(page_size=(200, 200))

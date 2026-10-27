@@ -1,0 +1,10 @@
+// Imposition check panel under the sheets (as the Montax "Imposition check" palette): info / warning / error.
+const checkBox=document.createElement('div');checkBox.className='impose-check';checkBox.innerHTML='<div class="impose-check-head">Kontrola impozycji</div><div class="impose-check-list"></div>';
+document.querySelector('.imposition-workspace').append(checkBox);
+let checkTimer=null,checkRun=0;
+const checkLevels={error:'Błąd',warning:'Ostrzeżenie',info:'Informacja'};
+async function refreshImposeCheck(){const doc=active(),list=checkBox.querySelector('.impose-check-list');if(mode!=='imposer'||!doc){list.textContent=doc?'':'Brak dokumentu.';return;}const run=++checkRun;const file=$('input-source').value==='result'&&doc.result?doc.result:doc.file;try{const form=new FormData();form.append('file',file);form.append('step',JSON.stringify({mode:'imposer',...readFields()}));const data=await(await request('/api/imposecheck',form)).json();if(run!==checkRun)return;list.replaceChildren();for(const issue of data.issues){const row=document.createElement('div');row.className='report-row '+issue.level;row.innerHTML='<span class="report-dot"></span><span class="report-text"></span><span class="report-page"></span>';row.querySelector('.report-text').textContent=issue.message;row.querySelector('.report-page').textContent=checkLevels[issue.level];list.append(row);}if(!data.issues.length)list.textContent='Brak uwag.';}catch(error){if(run===checkRun)list.textContent=error.message;}}
+function scheduleImposeCheck(){clearTimeout(checkTimer);checkTimer=setTimeout(refreshImposeCheck,500);}
+$('fields').addEventListener('input',scheduleImposeCheck);document.querySelector('.montax-strip')?.addEventListener('input',scheduleImposeCheck);floatLayer.addEventListener('input',scheduleImposeCheck);$('input-source').addEventListener('change',scheduleImposeCheck);
+const checkBaseRenderTool=renderTool;renderTool=function(key){checkBaseRenderTool(key);if(key==='imposer')scheduleImposeCheck();};
+const checkBaseChrome=updateDocumentChrome;updateDocumentChrome=function(){checkBaseChrome();if(mode==='imposer')scheduleImposeCheck();};

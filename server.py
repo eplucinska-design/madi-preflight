@@ -162,6 +162,7 @@ class Handler(BaseHTTPRequestHandler):
                  '/usability.js': ('usability.js', 'text/javascript; charset=utf-8'),
                  '/layout.js': ('layout.js', 'text/javascript; charset=utf-8'),
                  '/preflight.js': ('preflight.js', 'text/javascript; charset=utf-8'),
+                 '/impose_check.js': ('impose_check.js', 'text/javascript; charset=utf-8'),
                  '/panels.js': ('panels.js', 'text/javascript; charset=utf-8'),
                  '/menus.js': ('menus.js', 'text/javascript; charset=utf-8'),
                  '/sampler.js': ('sampler.js', 'text/javascript; charset=utf-8'),
@@ -193,7 +194,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(403, {'error': 'Niedozwolone zrodlo zapytania.'})
             if self.rate_limited():
                 return self.reply(429, {'error': 'Zbyt wiele zapytan. Sprobuj za minute.'})
-            if self.path not in {'/api/analyze', '/api/process', '/api/inspect', '/api/spots', '/api/sample', '/api/preflight', '/api/merge', '/api/split'}:
+            if self.path not in {'/api/analyze', '/api/process', '/api/inspect', '/api/spots', '/api/sample', '/api/preflight', '/api/merge', '/api/split', '/api/imposecheck'}:
                 return self.reply(404, {'error': 'Nie znaleziono.'})
             size = int(self.headers.get('Content-Length', 0))
             if not 0 < size <= MAX_UPLOAD:
@@ -238,6 +239,21 @@ class Handler(BaseHTTPRequestHandler):
                         error = json.loads(completed.stderr.decode('utf-8', 'replace').splitlines()[-1])['error']
                     except (ValueError, KeyError, IndexError):
                         error = 'Nie udalo sie odczytac separacji.'
+                    raise ValueError(error)
+                return self.reply(200, json.loads(completed.stdout.decode('utf-8', 'replace').strip().splitlines()[-1]))
+            if self.path == '/api/imposecheck':
+                step = json.loads(fields.get('step', '{}'))
+                if not isinstance(step, dict):
+                    raise ValueError('Nieprawidlowe ustawienia impozycji.')
+                with tempfile.TemporaryDirectory(prefix='madi-web-') as work:
+                    src = Path(work) / 'input.pdf'
+                    src.write_bytes(pdf)
+                    completed = run_engine(engine_command('impose_check.py', str(src)), json.dumps(step).encode(), timeout=60)
+                if completed.returncode:
+                    try:
+                        error = json.loads(completed.stderr.decode('utf-8', 'replace').splitlines()[-1])['error']
+                    except (ValueError, KeyError, IndexError):
+                        error = 'Nie udalo sie sprawdzic impozycji.'
                     raise ValueError(error)
                 return self.reply(200, json.loads(completed.stdout.decode('utf-8', 'replace').strip().splitlines()[-1]))
             if self.path in {'/api/merge', '/api/split'}:

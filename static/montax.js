@@ -1,7 +1,7 @@
 // Imposition view laid out after the Montax Imposer reference recordings: compact titled panels in two
 // columns on the left, the "margins and spacing" panel as a horizontal strip above the sheets.
 const montaxGroups=[
-['Wygląd impozycji',/^imposer_(order|rows|columns|duplex|duplex_pairing|mirror_back|add_blanks)$/],
+['Wygląd impozycji',/^imposer_(order|rows|columns|duplex|duplex_pairing|mirror_back|add_blanks|creep_mm)$/],
 ['Rozmiar arkusza',/^imposer_sheet/],
 ['Skala i położenie',/^imposer_(fit_mode|scale_percent|rotation|align)$/],
 ['Znaczniki',/^imposer_(crop_marks|mark_|draw_|registration_marks)/],
@@ -15,6 +15,8 @@ document.querySelector('.imposition-workspace').prepend(montaxStrip);
 const montaxBaseReadFields=readFields;
 readFields=function(){const data=montaxBaseReadFields();if(mode==='imposer'&&active())data.imposer_job_name=active().file.name;montaxStrip.querySelectorAll('input,select').forEach(el=>data[el.name]=el.type==='checkbox'?el.checked:el.value);return data;};
 montaxStrip.addEventListener('input',()=>{if(mode==='imposer')scheduleSheetPreview();});
+// Fields that depend on the imposition mode (e.g. booklet hides rows and columns) follow every change.
+$('fields').addEventListener('change',()=>{if(!busy)conditionalFields();});$('fields').addEventListener('input',()=>{if(!busy)conditionalFields();});
 const montaxBaseRenderTool=renderTool;
 renderTool=function(key){montaxStrip.replaceChildren();montaxStrip.hidden=true;montaxBaseRenderTool(key);if(key!=='imposer')return;
 // Montax panel order.

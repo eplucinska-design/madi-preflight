@@ -22,7 +22,7 @@ SHEET_PRESETS_MM: dict[str, tuple[float, float]] = {
 }
 
 
-ORDERS = {"repeat", "collate", "cut_stack"}
+ORDERS = {"repeat", "collate", "cut_stack", "booklet"}
 ROTATIONS = {"auto", "0", "90", "180", "270"}
 ALIGN_X = {"left": 0.0, "center": 0.5, "right": 1.0}
 ALIGN_Y = {"top": 0.0, "center": 0.5, "bottom": 1.0}
@@ -95,6 +95,7 @@ class ImposerSettings:
     duplex_pairing: str = "sequential"
     bleed_mm: float = 3.0
     registration_marks: bool = False
+    creep_mm: float = 0.0
     job_name: str = ""
 
 
@@ -161,6 +162,7 @@ def settings_from_args(args: SimpleNamespace) -> ImposerSettings:
         duplex_pairing=_choice(args, "imposer_duplex_pairing", "sequential", {"sequential", "alternate"}),
         bleed_mm=max(_float_arg(args, "imposer_bleed_mm", 3.0), 0.0),
         registration_marks=_bool_arg(args, "imposer_registration_marks", False),
+        creep_mm=max(_float_arg(args, "imposer_creep_mm", 0.0), 0.0),
         job_name=str(getattr(args, "imposer_job_name", "") or "")[:120],
     )
 
@@ -216,6 +218,8 @@ def sheet_plan(settings: ImposerSettings, page_count: int) -> list[list[list[int
     variant matches a job depends on its approved imposition pattern.
     """
     slots = settings.rows * settings.columns
+    if settings.order == "booklet":
+        return _booklet_plan(page_count)
     if settings.duplex and settings.duplex_pairing == "sequential":
         return _sequential_duplex_plan(settings, page_count, slots)
     units = _units(page_count, settings.duplex)
@@ -305,7 +309,16 @@ def placement(settings: ImposerSettings, page: fitz.Page, cell: fitz.Rect) -> tu
     return target, rotate, trim_rect
 
 
-def placement_trim(settings: ImposerSettings, page: fitz.Page, cell: fitz.Rect, inner: tuple[bool, bool, bool, bool]):
+def _booklet_plan(page_count: int) -> list[list[list[int | None]]]:
+    """Saddle-stitched booklet, 2 pages per side: sheet s front [N-2s, 1+2s], back [2+2s, N-1-2s] (1-based),
+    with the page count padded to a multiple of 4 by blank pages at the end."""
+    total = (page_count + 3) // 4 * 4
+    page = lambda index: index if index < page_count else None
+    return [[[page(total - 1 - 2 * s), page(2 * s)], [page(1 + 2 * s), page(total - 2 - 2 * s)]] for s in range(total // 4)]
+
+
+def placement_trim(settings: ImposerSettings, page: fitz.Page, cell: fitz.Rect, inner: tuple[bool, bool, bool, bool],
+                   creep: float = 0.0):
     """Montax-style placement: the page TrimBox at 100 % centred in the position, bleed clipped to the
     imposition bleed and, on sides facing another position, to half the gap. Returns target, rotation,
     trim rectangle on the sheet and the source clip."""
@@ -323,6 +336,14 @@ def placement_trim(settings: ImposerSettings, page: fitz.Page, cell: fitz.Rect, 
     x0, y0 = cell.x0 + (cell.width - tw) / 2, cell.y0 + (cell.height - th) / 2
     trim_rect = fitz.Rect(x0, y0, x0 + tw, y0 + th)
     target = fitz.Rect(trim_rect.x0 - got[0], trim_rect.y0 - got[1], trim_rect.x1 + got[2], trim_rect.y1 + got[3])
+    if creep > 0 and rotate == 0:
+        # Creep compensation: content moves towards the spine, the trim stays; content past the spine is cut.
+        if inner[2]:
+            target.x0 += creep
+            clip.x1 -= creep
+        elif inner[0]:
+            target.x1 -= creep
+            clip.x0 += creep
     return target, rotate, trim_rect, clip
 
 
@@ -399,6 +420,7 @@ def _render_side(
     sheet_number: int,
     preview: bool = False,
     sheet_total: int = 0,
+    creep: float = 0.0,
 ) -> None:
     sheet = out.new_page(width=mm_to_pt(settings.sheet_width_mm), height=mm_to_pt(settings.sheet_height_mm))
     if settings.draw_sheet_labels:
@@ -422,7 +444,7 @@ def _render_side(
         actual_col = settings.columns - 1 - col if mirror else col
         inner = (actual_col > 0, row > 0, actual_col < settings.columns - 1, row < settings.rows - 1)
         if settings.fit_mode == "trim":
-            target, rotate, trim, clip = placement_trim(settings, src[source_page_index], cell, inner)
+            target, rotate, trim, clip = placement_trim(settings, src[source_page_index], cell, inner, creep)
             sheet.show_pdf_page(target, src, source_page_index, keep_proportion=False, rotate=rotate, clip=clip)
         else:
             target, rotate, trim = placement(settings, src[source_page_index], cell)
@@ -447,6 +469,9 @@ def render_sheets(src: fitz.Document, settings: ImposerSettings, out: fitz.Docum
         raise ValueError("Imposer wymaga co najmniej jednej pozycji na arkuszu.")
     if src.page_count <= 0:
         raise ValueError("PDF wejsciowy nie zawiera stron.")
+    if settings.order == "booklet":
+        # Booklet: two pages side by side meeting at the spine, both sides of the sheet, trim placement.
+        settings = replace(settings, rows=1, columns=2, duplex=True, mirror_back=False, fit_mode="trim", gap_x_mm=0.0, rotation="0")
     if settings.fit_mode == "trim" and not settings.position_width_mm:
         # Automatic position size = TrimBox of the first page (as Montax "Auto positions size").
         trim = src[0].trimbox
@@ -462,8 +487,9 @@ def render_sheets(src: fitz.Document, settings: ImposerSettings, out: fitz.Docum
             continue
         for side, slots in enumerate(sides):
             label = ("Tyl" if side else "Przod") if settings.duplex else "Arkusz"
+            creep = mm_to_pt(settings.creep_mm) * index if settings.order == "booklet" else 0.0
             _render_side(out, src, settings, slots, label, bool(side and settings.mirror_back), index + 1,
-                         preview=only_sheet is not None, sheet_total=len(plan))
+                         preview=only_sheet is not None, sheet_total=len(plan), creep=creep)
     return len(plan)
 
 
@@ -484,3 +510,67 @@ def process_imposer_pdf(args: SimpleNamespace) -> None:
         settings.rows,
         settings.order,
     )
+
+
+def check_imposition(src: fitz.Document, settings: ImposerSettings) -> dict:
+    """Imposition check (as Montax): facts about the layout with level info / warning / error."""
+    issues = []
+    add = lambda level, message: issues.append({"level": level, "message": message})
+    if settings.order == "booklet":
+        settings = replace(settings, rows=1, columns=2, duplex=True, mirror_back=False, fit_mode="trim", gap_x_mm=0.0, rotation="0")
+    if settings.fit_mode == "trim" and not settings.position_width_mm and src.page_count:
+        trim = src[0].trimbox
+        width, height = trim.width / PT_PER_MM, trim.height / PT_PER_MM
+        if settings.rotation in ("90", "270"):
+            width, height = height, width
+        settings = replace(settings, position_width_mm=width, position_height_mm=height)
+    try:
+        cells = [_slot_rect(settings, r, c, False) for r in range(settings.rows) for c in range(settings.columns)]
+        plan = sheet_plan(settings, src.page_count)
+    except ValueError as error:
+        add("error", str(error))
+        return {"issues": issues, "sheets": 0}
+    sides = len(plan[0]) if plan else 1
+    add("info", f"Arkusze: {len(plan)} ({'dwustronne' if sides == 2 else 'jednostronne'}), pozycje na stronie arkusza: "
+                f"{settings.rows * settings.columns}, format arkusza {settings.sheet_width_mm:g} x {settings.sheet_height_mm:g} mm.")
+    empty = sum(1 for sheet in plan for side in sheet for slot in side if slot is None)
+    if settings.order == "booklet":
+        added = (src.page_count + 3) // 4 * 4 - src.page_count
+        if added:
+            add("info", f"Skladka wymaga wielokrotnosci 4 stron: dodano {added} puste strony na koncu.")
+        if settings.creep_mm > 0 and len(plan) > 1:
+            add("info", f"Korekta pelzania: przesuniecie do grzbietu od 0 do {settings.creep_mm * (len(plan) - 1):.2f} mm (arkusz wewnetrzny).")
+    elif empty:
+        add("warning", f"Puste pozycje: {empty} (zostana bez druku).")
+    if settings.fit_mode == "trim":
+        pos_w, pos_h = settings.position_width_mm, settings.position_height_mm
+        different, larger, no_bleed = [], [], []
+        for number, page in enumerate(src, 1):
+            trim = page.trimbox
+            tw, th = trim.width / PT_PER_MM, trim.height / PT_PER_MM
+            if settings.rotation in ("90", "270"):
+                tw, th = th, tw
+            if tw > pos_w + 0.5 or th > pos_h + 0.5:
+                larger.append(number)
+            elif abs(tw - pos_w) > 0.5 or abs(th - pos_h) > 0.5:
+                different.append(number)
+            if settings.bleed_mm > 0 and page.cropbox == trim:
+                no_bleed.append(number)
+        short = lambda pages: ", ".join(map(str, pages[:12])) + (" ..." if len(pages) > 12 else "")
+        if larger:
+            add("error", f"Strony wieksze niz pozycja {pos_w:.1f} x {pos_h:.1f} mm: {short(larger)} (nachodza na sasiednie uzytki).")
+        if different:
+            add("warning", f"Strony o innym formacie netto niz pozycja: {short(different)} (zostana wysrodkowane).")
+        if no_bleed:
+            add("warning", f"Strony bez spadu (TrimBox = CropBox): {short(no_bleed)}.")
+    if settings.crop_marks:
+        block = fitz.Rect(cells[0])
+        for cell in cells[1:]:
+            block |= cell
+        reach = mm_to_pt(settings.mark_offset_mm) + mm_to_pt(settings.mark_length_mm)
+        sheet = fitz.Rect(0, 0, mm_to_pt(settings.sheet_width_mm), mm_to_pt(settings.sheet_height_mm))
+        if not sheet.contains(fitz.Rect(block.x0 - reach, block.y0 - reach, block.x1 + reach, block.y1 + reach)):
+            add("warning", "Znaczniki ciecia wychodza poza arkusz: zwieksz marginesy lub zmniejsz dlugosc znacznikow.")
+    order = {"error": 0, "warning": 1, "info": 2}
+    issues.sort(key=lambda item: order[item["level"]])
+    return {"issues": issues, "sheets": len(plan)}
