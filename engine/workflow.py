@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import fitz
 import foil_preflight as engine
-from imposer import process_imposer_pdf
+from imposer import process_imposer_pdf, settings_from_args, _render_side, _extend_slots
 from cleanup_marks import process_cleanup_marks_pdf
 
 
@@ -93,7 +93,26 @@ def run(step, src, out):
                 if not math.isfinite(value) or not 0 <= value <= 2000:
                     raise ValueError('Nieprawidlowy wymiar impozycji.')
                 settings[key] = value
-        return process_imposer_pdf(SimpleNamespace(input=src, output=out, **settings))
+        args = SimpleNamespace(input=src, output=out, **settings)
+        if 'imposer_preview_sheet' in step:
+            config = settings_from_args(args)
+            index = int(step['imposer_preview_sheet'])
+            slots_per_side = config.rows * config.columns
+            sides = 2 if config.duplex else 1
+            with fitz.open(src) as document, fitz.open() as preview:
+                total = len(document) * config.repeat_count
+                sheet_count = (total + slots_per_side*sides - 1) // (slots_per_side*sides)
+                if not 0 <= index < sheet_count:
+                    raise ValueError('Numer arkusza poza zakresem.')
+                for side in range(sides):
+                    start = (index*sides + side) * slots_per_side
+                    slots = [slot // config.repeat_count for slot in range(start, min(start+slots_per_side, total))]
+                    slots = _extend_slots(slots, slots_per_side, config.add_blanks)
+                    _render_side(preview, document, config, slots,
+                        'Back side' if side else 'Front side', bool(side and config.mirror_back), index+1, preview=True)
+                preview.save(out, garbage=4, deflate=True)
+            return
+        return process_imposer_pdf(args)
     functions = {'bleed': engine.process_bleed_pdf, 'black': engine.process_black_pdf,
         'white': engine.process_white_pdf, 'matrix': engine.process_pdf,
         'shape': engine.process_generated_shape_pdf, 'dieline': engine.process_dieline_pdf,

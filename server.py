@@ -50,9 +50,13 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authorized():
             return
         files = {'/': ('index.html', 'text/html; charset=utf-8'),
+                 '/favicon.ico': ('favicon.ico', 'image/x-icon'),
+                 '/madi-preflight.png': ('madi-preflight.png', 'image/png'),
                  '/tools.js': ('tools.js', 'text/javascript; charset=utf-8'),
                  '/workspace.js': ('workspace.js', 'text/javascript; charset=utf-8'),
                  '/workspace.css': ('workspace.css', 'text/css; charset=utf-8'),
+                 '/ergonomics.css': ('ergonomics.css', 'text/css; charset=utf-8'),
+                 '/usability.js': ('usability.js', 'text/javascript; charset=utf-8'),
                  '/vendor/lucide.min.js': ('vendor/lucide.min.js', 'text/javascript; charset=utf-8'),
                  '/vendor/lucide-LICENSE': ('vendor/lucide-LICENSE', 'text/plain; charset=utf-8')}
         path = urllib.parse.urlsplit(self.path).path

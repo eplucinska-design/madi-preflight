@@ -205,6 +205,7 @@ def _render_side(
     side_label: str,
     mirror: bool,
     sheet_number: int,
+    preview: bool = False,
 ) -> None:
     sheet = out.new_page(width=mm_to_pt(settings.sheet_width_mm), height=mm_to_pt(settings.sheet_height_mm))
     if settings.draw_sheet_labels:
@@ -219,7 +220,7 @@ def _render_side(
         col = slot_index % settings.columns
         rect = _slot_rect(settings, row, col, mirror)
         if source_page_index is None:
-            if settings.add_blanks:
+            if settings.add_blanks and preview:
                 _draw_blank(sheet, rect)
         else:
             _place_pdf_page(sheet, src, source_page_index, rect, settings)

@@ -95,6 +95,41 @@ class SmokeTest(unittest.TestCase):
                 self.post('/api/process', {'workflow': json.dumps(steps)})
             self.assertEqual(error.exception.code, 422)
 
+    def test_imposition_preview_matches_export_and_mirrors_back(self):
+        source = fitz.open()
+        for number in range(1, 5):
+            source.new_page(width=100, height=140).insert_text((10, 30), f'PAGE-{number}')
+        payload = source.tobytes()
+        source.close()
+        settings = {'mode': 'imposer', 'imposer_rows': 1, 'imposer_columns': 2,
+            'imposer_repeat_count': 1, 'imposer_duplex': True, 'imposer_mirror_back': True,
+            'imposer_draw_sheet_labels': False}
+        with self.post('/api/process', {'workflow': json.dumps([settings])}, payload) as response:
+            exported = response.read()
+        with self.post('/api/process', {'workflow': json.dumps([{**settings, 'imposer_preview_sheet': 0}])}, payload) as response:
+            preview = response.read()
+        with fitz.open(stream=exported, filetype='pdf') as out, fitz.open(stream=preview, filetype='pdf') as plan:
+            self.assertEqual(len(out), 2)
+            self.assertEqual(len(plan), 2)
+            for index in range(2):
+                self.assertEqual(out[index].get_pixmap().samples, plan[index].get_pixmap().samples)
+            words = {word[4]: word for word in out[1].get_text('words')}
+            self.assertGreater(words['PAGE-3'][0], words['PAGE-4'][0])
+
+    def test_blank_imposition_positions_have_no_production_ink(self):
+        settings = {'mode': 'imposer', 'imposer_rows': 1, 'imposer_columns': 2,
+            'imposer_repeat_count': 1, 'imposer_duplex': True,
+            'imposer_add_blanks': True, 'imposer_draw_sheet_labels': False}
+        with self.post('/api/process', {'workflow': json.dumps([settings])}) as response:
+            output = response.read()
+        with fitz.open(stream=output, filetype='pdf') as doc:
+            self.assertEqual(len(doc), 2)
+            self.assertEqual(doc[1].get_text(), '')
+            self.assertEqual(doc[1].get_drawings(), [])
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.post('/api/process', {'workflow': json.dumps([{**settings, 'imposer_preview_sheet': 1}])})
+        self.assertEqual(error.exception.code, 422)
+
     def test_server_password_and_workspace_assets(self):
         password = 'test-only-password'
         process = subprocess.Popen([sys.executable, 'server.py', '18766'],

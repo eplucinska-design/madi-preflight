@@ -20,6 +20,11 @@ Otworz http://127.0.0.1:8765. Inny port: `python server.py 8766`.
   miniatury stron, centralny podglad, pasek narzedzi i dokowane panele.
 - Panele: Wlasciwosci / Kolejka / Inspektor / Presety. Parametry w rozwijanych
   grupach, pola zalezne od wybranego modelu koloru i ksztaltu.
+- Widoczna biblioteka narzedzi i przyciski nazwane wedlug konkretnej operacji.
+- Osobny warsztat impozycji: przod/tyl arkusza, przechodzenie miedzy arkuszami,
+  szybkie ustawienia A3/A4/SRA3 i rzeczywisty podglad PDF ustawien.
+  Podglad korzysta z tej samej funkcji ukladu co eksport. Wypelnienia pustych
+  pozycji sa tylko w podgladzie; nie sa drukowane w PDF wynikowym.
 - Powiekszanie 50-300%, dopasowanie strony, przesuwanie widoku, zaznaczanie
   ramki geometrii po analizie i przeciaganie plikow PDF do obszaru dokumentu.
 - Wczytanie PDF do 40 MB, podglad oryginalu i wyniku, nawigacja po stronach.
@@ -48,6 +53,8 @@ korzystaja z wartosci domyslnych odziedziczonego silnika.
 `python -m unittest test_smoke -v` sprawdza operacje i podglad wynikow,
 kolejnosc workflow, obrot i powielanie stron, inspektor oraz bledne wejscie.
 Testy nie korzystaja z dokumentow klientow.
+Sprawdzana jest tez zgodnosc renderu podgladu i eksportu impozycji,
+lustrzany uklad tylu oraz brak farby w pustych pozycjach produkcyjnych.
 
 ## Architektura i wdrozenie
 
