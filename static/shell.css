@@ -58,6 +58,30 @@ body.shell .page-item{height:auto;padding:4px}body.shell .page-item img,body.she
 .menu-item{display:grid;grid-template-columns:16px 1fr auto;gap:6px;width:100%;justify-content:stretch;text-align:left;min-height:26px;padding:3px 8px;font-size:12.5px}
 .menu-check{color:var(--accent);font-weight:600}.menu-key{color:var(--muted);font-size:11px}
 body.shell .menu-actions{flex:0}
+/* Impozycja w układzie Montax (nagrania referencyjne) */
+body.shell.imposing{--left-dock:520px}
+body.imposing #fields{column-count:2;column-gap:6px}
+body.imposing #fields .field-group{break-inside:avoid;border:1px solid var(--border);border-radius:3px;margin:0 0 6px;background:var(--panel)}
+body.imposing #fields .field-group>summary{background:linear-gradient(var(--panel2),color-mix(in srgb,var(--accent) 8%,var(--panel2)));color:var(--text);text-transform:none;letter-spacing:0;font-size:11px;font-weight:600;padding:3px 6px;border-bottom:1px solid var(--border)}
+body.imposing #fields .field-group>summary:before{content:none}
+body.imposing #fields .group-fields{grid-template-columns:1fr;gap:3px;padding:5px 6px}
+body.imposing #fields .field,body.imposing .strip-fields .field{display:grid;grid-template-columns:1fr 72px;align-items:center;gap:4px}
+body.imposing #fields .field.full{grid-template-columns:1fr}
+body.imposing #fields .field label,body.imposing .strip-fields .field label{font-size:10.5px;line-height:1.2}
+body.imposing #fields .field input:not([type=checkbox]),body.imposing #fields .field select,body.imposing .strip-fields input{height:22px;margin:0;font-size:11px;padding:1px 4px}
+body.imposing #fields .check{font-size:10.5px;gap:5px}
+body.imposing .imposition-presets{column-span:all}
+.montax-strip{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;padding:5px 8px;margin:6px 0 4px;border:1px solid var(--border);border-radius:3px;background:var(--panel)}
+.montax-strip>strong{font-size:11px;white-space:nowrap;padding-top:4px}
+.montax-strip .strip-fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:3px 12px;padding:0;flex:1;min-width:0}
+.montax-strip .field label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Montax: the sheets take the rest of the window; the control dock returns outside imposition. */
+body.shell.imposing .desk{grid-template-columns:var(--left-dock,300px) minmax(0,1fr) 0}body.shell.imposing .right-dock{display:none}
+body.imposing .stage{background:#9a9c9f}body.light.imposing .stage{background:#a4a6a9}
+body.imposing .sheet-view figcaption{justify-content:center;color:#f2f2f2;font-size:11px;padding:4px 0}body.imposing .sheet-view figcaption small{display:none}
+body.imposing .imposition-topbar{color:#f2f2f2}body.imposing .imposition-topbar>span{color:#e4e4e4}
+body.imposing .sheet-surface{border:1px solid #666;box-shadow:none}
+body.imposing .sheet-caption{color:#f0f0f0}
 /* Raport kontroli */
 .report-box{padding:6px 10px 10px;display:grid;gap:6px}.report-settings{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.report-settings label{font-size:10.5px;color:var(--muted);display:grid;gap:2px}.report-settings input{height:24px}
 .report-run{min-height:28px}.report-summary{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:11px}.report-source{color:var(--muted);margin-right:auto}

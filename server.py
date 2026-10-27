@@ -164,6 +164,7 @@ class Handler(BaseHTTPRequestHandler):
                  '/preflight.js': ('preflight.js', 'text/javascript; charset=utf-8'),
                  '/menus.js': ('menus.js', 'text/javascript; charset=utf-8'),
                  '/sampler.js': ('sampler.js', 'text/javascript; charset=utf-8'),
+                 '/montax.js': ('montax.js', 'text/javascript; charset=utf-8'),
                  '/shell.js': ('shell.js', 'text/javascript; charset=utf-8'),
                  '/shell.css': ('shell.css', 'text/css; charset=utf-8'),
                  '/ux.js': ('ux.js', 'text/javascript; charset=utf-8'),
