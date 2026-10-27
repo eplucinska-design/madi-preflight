@@ -92,6 +92,7 @@ class ImposerSettings:
     align: str = "center"
     mark_length_mm: float = 4.0
     mark_offset_mm: float = 2.0
+    duplex_pairing: str = "sequential"
 
 
 def _choice(args: SimpleNamespace, name: str, default: str, allowed: set[str]) -> str:
@@ -154,6 +155,7 @@ def settings_from_args(args: SimpleNamespace) -> ImposerSettings:
         align=align,
         mark_length_mm=max(_float_arg(args, "imposer_mark_length_mm", 4.0), 0.0),
         mark_offset_mm=max(_float_arg(args, "imposer_mark_offset_mm", 2.0), 0.0),
+        duplex_pairing=_choice(args, "imposer_duplex_pairing", "sequential", {"sequential", "alternate"}),
     )
 
 
@@ -192,10 +194,14 @@ def sheet_plan(settings: ImposerSettings, page_count: int) -> list[list[list[int
     """Sheets -> sides -> slots (source page index or None).
 
     Shared by export and preview, so both place exactly the same pages.
-    Back-side slot k holds the back of the unit printed in front slot k;
-    mirroring of its position is applied when the side is rendered.
+    With duplex pairing "alternate", back slot k holds the page following
+    the one in front slot k; "sequential" keeps the earlier behaviour.
+    Mirroring of the back is applied when the side is rendered. Which
+    variant matches a job depends on its approved imposition pattern.
     """
     slots = settings.rows * settings.columns
+    if settings.duplex and settings.duplex_pairing == "sequential":
+        return _sequential_duplex_plan(settings, page_count, slots)
     units = _units(page_count, settings.duplex)
     if settings.order == "collate":
         sequence = [unit for _ in range(settings.repeat_count) for unit in units]
@@ -214,6 +220,27 @@ def sheet_plan(settings: ImposerSettings, page_count: int) -> list[list[list[int
             positions.append(sequence[index] if index < len(sequence) else None)
         plan.append([[unit[side] if unit is not None else None for unit in positions] for side in range(sides)])
     return plan
+
+
+def _sequential_duplex_plan(settings: ImposerSettings, page_count: int, slots: int) -> list[list[list[int | None]]]:
+    """Previous behaviour: consecutive sides take consecutive pages (front 1,2 / back 3,4)."""
+    pages = list(range(page_count))
+    if settings.order == "collate":
+        sequence = [page for _ in range(settings.repeat_count) for page in pages]
+    else:
+        sequence = [page for page in pages for _ in range(settings.repeat_count)]
+    side_count = max((len(sequence) + slots - 1) // slots, 1)
+    side_count += side_count % 2
+    if side_count // 2 > MAX_SHEETS:
+        raise ValueError(f"Impozycja przekracza limit {MAX_SHEETS} arkuszy.")
+    sides = []
+    for side in range(side_count):
+        positions = []
+        for slot in range(slots):
+            index = slot * side_count + side if settings.order == "cut_stack" else side * slots + slot
+            positions.append(sequence[index] if index < len(sequence) else None)
+        sides.append(positions)
+    return [sides[index:index + 2] for index in range(0, side_count, 2)]
 
 
 def _rotation(settings: ImposerSettings, src_rect: fitz.Rect, cell: fitz.Rect) -> int:

@@ -113,11 +113,12 @@ class SmokeTest(unittest.TestCase):
             self.assertEqual(len(plan), 2)
             for index in range(2):
                 self.assertEqual(out[index].get_pixmap().samples, plan[index].get_pixmap().samples)
-            # Duplex pairs pages as front/back of one unit: front 1,3 and mirrored back 2,4.
-            front = {word[4]: word for word in out[0].get_text('words')}
-            back = {word[4]: word for word in out[1].get_text('words')}
-            self.assertLess(front['PAGE-1'][0], front['PAGE-3'][0])
-            self.assertGreater(back['PAGE-2'][0], back['PAGE-4'][0])
+            # Default keeps the earlier sequential variant: front 1,2 and mirrored back 3,4.
+            words = {word[4]: word for word in out[1].get_text('words')}
+            self.assertGreater(words['PAGE-3'][0], words['PAGE-4'][0])
+        sheets = self.sheet_words({**settings, 'imposer_duplex_pairing': 'alternate'}, payload)
+        self.assertEqual([w for _, w in sheets[0]], ['PAGE-1', 'PAGE-3'])
+        self.assertEqual([w for _, w in sheets[1]], ['PAGE-4', 'PAGE-2'])
 
     def numbered_pdf(self, count, width=100, height=140, trim=None):
         source = fitz.open()
