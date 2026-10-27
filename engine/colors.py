@@ -13,6 +13,8 @@ from pathlib import Path
 import pikepdf
 from pikepdf import Name, Operator
 
+# Separation names that are process plates or registration, not spot inks.
+NOT_SPOT = {"Cyan", "Magenta", "Yellow", "Black", "All", "None"}
 FILL_OPS = {"f", "F", "f*", "B", "B*", "b", "b*"}
 STROKE_OPS = {"S", "s", "B", "B*", "b", "b*"}
 PATH_PAINT = FILL_OPS | STROKE_OPS | {"n"}
@@ -282,7 +284,7 @@ def report(path: str | Path) -> list[dict]:
         {"name": name, "pages": sorted(item.pages), "fill": item.fill, "stroke": item.stroke, "text": item.text,
          "images": item.images, "overprint_fill": item.overprint_fill, "overprint_stroke": item.overprint_stroke,
          "alternate": item.alternate}
-        for name, item in sorted(usage.items())
+        for name, item in sorted(usage.items()) if name not in NOT_SPOT
     ]
 
 

@@ -174,7 +174,7 @@ def sample(data: bytes, page_number: int, x_mm: float, y_mm: float, radius_mm: f
     clip = fitz.Rect(x - r, y - r, x + r, y + r) & rect
     with pikepdf.open(io.BytesIO(data)) as pdf:
         usage = colors.spot_usage(pdf)
-    spots = sorted(name for name, item in usage.items() if page_number in item.pages and name not in ("All", "None"))
+    spots = sorted(name for name, item in usage.items() if page_number in item.pages and name not in colors.NOT_SPOT)
     plates = {}
 
     def average(pix, channel):

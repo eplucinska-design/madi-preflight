@@ -125,8 +125,8 @@ def report(data: bytes, bleed_mm: float = 3.0, dpi_error: int = 150, dpi_warning
                 add("error", number, "white_overprint", f"Biale obiekty z nadrukiem: {stats['white_op']} (znikna w druku).")
             if stats["transparency"]:
                 add("info", number, "transparency", "Przezroczystosc: " + ", ".join(sorted(stats["transparency"])) + ".")
-        spots = sorted(name for name, item in usage.items() if item.fill or item.stroke or item.images)
-        unused = sorted(name for name, item in usage.items() if not (item.fill or item.stroke or item.images))
+        spots = sorted(name for name, item in usage.items() if name not in colors.NOT_SPOT and (item.fill or item.stroke or item.images))
+        unused = sorted(name for name, item in usage.items() if name not in colors.NOT_SPOT and not (item.fill or item.stroke or item.images))
         if spots:
             add("info", None, "spots", "Kolory spot w uzyciu: " + ", ".join(spots) + ".")
         technical = ("cut", "contour", "wykroj", "die", "crease", "big", "perf", "rill")
